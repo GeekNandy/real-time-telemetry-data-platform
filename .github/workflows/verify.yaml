@@ -1,0 +1,38 @@
+name: Verify
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  contracts-and-integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Check formatting and compiler warnings
+        run: |
+          python3 scripts/format-java.py
+          ./scripts/verify-core.sh
+          python3 -m py_compile scripts/*.py
+          for source in scripts/*.sh; do bash -n "$source"; done
+      - name: Build and test the available modules
+        run: ./mvnw --batch-mode --no-transfer-progress verify
+      - name: Collect reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: java-verification
+          path: |
+            **/target/surefire-reports/
+            **/target/failsafe-reports/
+          if-no-files-found: error

@@ -1,17 +1,24 @@
 # Real-Time Telemetry Data Platform
 
-A Java 21 reference platform for authenticated telemetry ingestion, persistent buffering, Kafka delivery, schema evolution and idempotent PostgreSQL persistence.
+Java 21 components for reliable telemetry ingestion and processing.
 
-## Implementation under review
+## Components
 
-This branch intentionally contains only this README while the platform foundation is reviewed.
+| Module | Responsibility |
+| --- | --- |
+| `core` | Immutable events, atomic tenant admission, cancellation-safe durable work and delivery ordering |
 
-- [Implementation: feature/platform-foundation](https://github.com/GeekNandy/real-time-telemetry-data-platform/tree/feature/platform-foundation)
-- [Pull requests](https://github.com/GeekNandy/real-time-telemetry-data-platform/pulls)
-- [Scope and acceptance gates](https://github.com/GeekNandy/real-time-telemetry-data-platform/issues/1)
+## Build and verify
 
-The implementation branch contains the source, build instructions, design and failure model, deployment configuration, runbooks and verification evidence. Refer to its verification record for observed results and outstanding checks.
+Requires JDK 21. The Maven wrapper downloads and checksum-verifies Maven 3.9.12.
 
-HTTP acceptance follows synchronization to the collector's persistent volume. Kafka and database delivery are asynchronous; retaining that volume until confirmed Kafka publication is part of the durability assumption.
+```bash
+./mvnw --batch-mode --no-transfer-progress verify
+./scripts/verify-core.sh
+```
 
-This is a reference project under verification. No production deployment or pipeline capacity is claimed.
+The core runner and its JUnit adapter execute the same contracts; do not count them twice.
+
+## Development
+
+Changes are proposed from feature branches and merged through PRs after the relevant checks pass. The foundation was extracted from [draft PR #2](https://github.com/GeekNandy/real-time-telemetry-data-platform/pull/2); the [review sequence](docs/review-sequence.md) explains its decomposition. Owner-authorized merging is not independent human approval.
