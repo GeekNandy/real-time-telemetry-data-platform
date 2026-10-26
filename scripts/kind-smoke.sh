@@ -14,6 +14,11 @@ cleanup() {
   if [ -n "$telemetry_forward_worker" ]; then kill "$telemetry_forward_worker" 2>/dev/null || true; fi
   kubectl --context "$telemetry_context" -n "$telemetry_namespace" get pods,pvc > "$telemetry_reports/resources.txt" 2>&1 || true
   kubectl --context "$telemetry_context" -n "$telemetry_namespace" logs -l app.kubernetes.io/name=telemetry --all-containers --prefix > "$telemetry_reports/application.log" 2>&1 || true
+  kubectl --context "$telemetry_context" -n "$telemetry_namespace" get events --sort-by=.lastTimestamp > "$telemetry_reports/events.txt" 2>&1 || true
+  for telemetry_dependency in kafka registry postgres; do
+    kubectl --context "$telemetry_context" -n "$telemetry_namespace" logs -l "app=${telemetry_dependency}" --all-containers --prefix --tail=200 > "$telemetry_reports/${telemetry_dependency}.log" 2>&1 || true
+    kubectl --context "$telemetry_context" -n "$telemetry_namespace" logs -l "app=${telemetry_dependency}" --all-containers --prefix --previous --tail=200 > "$telemetry_reports/${telemetry_dependency}-previous.log" 2>&1 || true
+  done
   kind delete cluster --name "$telemetry_cluster"
 }
 trap cleanup EXIT
