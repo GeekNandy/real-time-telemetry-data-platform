@@ -7,8 +7,16 @@ if (!process.env.TELEMETRY_CONSOLE_TOKEN_FILE) throw new Error('A synthetic demo
 const token = (await fs.readFile(process.env.TELEMETRY_CONSOLE_TOKEN_FILE, 'utf8')).trim();
 const url = process.env.TELEMETRY_CONSOLE_URL || 'http://127.0.0.1:8088';
 const browser = await launch();
+let page;
+const outcomes = [];
 try {
-  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  page.on('response', response => {
+    const pathname = new URL(response.url()).pathname;
+    if (pathname.startsWith('/api/')) outcomes.push({
+      route: pathname.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/ig, '{eventId}'), status: response.status()
+    });
+  });
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   const response = await page.goto(url);
   assert.match(response.headers()['content-security-policy'], /connect-src 'self'/);
@@ -22,6 +30,12 @@ try {
   await page.getByRole('link', { name: /Event playground/ }).click();
   const event = JSON.parse(await page.locator('#event-json').inputValue());
   await page.getByRole('button', { name: 'Submit event' }).click();
+  await page.waitForFunction(() => {
+    const text = document.getElementById('journey-submitted').textContent;
+    return text.includes('HTTP ') || text.includes('outcome unconfirmed');
+  }, null, { timeout: 10000 });
+  assert.ok(await page.locator('#journey-accepted').evaluate(element => element.classList.contains('complete')),
+    await page.locator('#event-notice').textContent());
   await page.waitForFunction(() => document.getElementById('journey-visible').classList.contains('complete'), null, { timeout: 40000 });
   assert.ok(await page.locator('#journey-accepted').evaluate(element => element.classList.contains('complete')));
   await saveScreenshot(page, 'live-event-journey.png');
@@ -29,7 +43,7 @@ try {
   await page.locator('#lookup-result').waitFor();
   const stored = JSON.parse(await page.locator('#lookup-result').textContent());
   assert.equal(stored.eventId, event.eventId);
-  assert.equal(stored.attributes.source, 'operator-console');
+  assert.equal(stored.attributes.platform, 'operator-console');
   await page.getByRole('link', { name: /Overview/ }).click();
   await page.waitForFunction(() => document.getElementById('buffer-records').textContent !== '—');
   await page.locator('#refresh').click();
@@ -47,4 +61,16 @@ try {
     observerAuthorization: true, restrictedProxy: true, mobileFits: true, credentialsPersisted: false
   }, null, 2));
   console.log('PASS actual browser -> gateway -> collector -> Kafka -> PostgreSQL -> worker query');
+} catch (error) {
+  await fs.mkdir(reports, { recursive: true });
+  const state = page ? await page.evaluate(() => ({
+    notice: document.getElementById('event-notice')?.textContent,
+    stages: ['journey-submitted', 'journey-accepted', 'journey-visible'].map(id => ({
+      id, text: document.getElementById(id)?.textContent, state: document.getElementById(id)?.className
+    }))
+  })).catch(() => ({})) : {};
+  await fs.writeFile(path.join(reports, 'live-failure.json'), JSON.stringify({ state, outcomes: outcomes.slice(-40) }, null, 2));
+  if (page && !await page.locator('#session-dialog').evaluate(element => element.open).catch(() => true))
+    await saveScreenshot(page, 'live-failure.png');
+  throw error;
 } finally { await browser.close(); }

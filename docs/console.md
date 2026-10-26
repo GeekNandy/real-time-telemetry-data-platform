@@ -17,6 +17,10 @@ of `data/auth/console.token`. This generated, one-hour local token grants
 `telemetry.write`, `telemetry.read` and `telemetry.observe`. To issue a different
 local tenant's token, run `python3 scripts/demo-token.py --tenant other --console`.
 The demo signing key remains on the server; the browser cannot mint tokens.
+The default event uses the supported `performance.sample` type and allowlisted
+`platform`, `metric` and `value` attributes. Its values are synthetic. The client
+validates the current event-v1 allowlist and lengths before submission; the
+backend still performs authoritative validation.
 
 Grafana is at **http://127.0.0.1:3000**, with user `operator` and the generated
 password in `data/auth/grafana-admin-password`. Its datasource and six-panel

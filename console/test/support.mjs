@@ -15,6 +15,8 @@ export async function launch() {
 
 export async function connect(page, token = 'synthetic-fixture-token') {
   await page.getByRole('button', { name: /Connect session|Replace credentials/ }).click();
+  await page.getByRole('dialog', { name: 'Connect your session' }).waitFor();
+  assert.equal(await page.getByLabel('Event access token', { exact: true }).getAttribute('type'), 'password');
   await page.getByLabel('Event access token', { exact: true }).fill(token);
   await page.getByRole('button', { name: 'Use credentials' }).click();
   await page.waitForFunction(() => !document.getElementById('session-dialog').open);

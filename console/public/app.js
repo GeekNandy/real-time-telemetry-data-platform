@@ -1,4 +1,4 @@
-import { ApiError, UUID, acceptedRate, format, isNumber, matchingEvent, request, validateEvent } from './model.js';
+import { ApiError, UUID, acceptedRate, format, isNumber, matchingEvent, request, syntheticEvent, validateEvent } from './model.js';
 
 const $ = id => document.getElementById(id);
 let accessToken = '', observeToken = '', session = new AbortController(), generation = 0;
@@ -50,10 +50,7 @@ function step(id, text, state = '') {
 function newEvent() {
   if (submitting || checking) return;
   currentEvent = null; currentTrace = null; currentAccepted = false;
-  $('event-json').value = JSON.stringify({
-    eventId: crypto.randomUUID(), eventType: 'operator.sample', schemaVersion: 1,
-    occurredAt: new Date().toISOString(), attributes: { source: 'operator-console', kind: 'synthetic' }
-  }, null, 2);
+  $('event-json').value = JSON.stringify(syntheticEvent(), null, 2);
   $('event-json').readOnly = false;
   $('send-event').textContent = 'Submit event ↗';
   $('event-actions').hidden = true;

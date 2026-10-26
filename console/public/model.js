@@ -1,6 +1,11 @@
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const isNumber = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
 
+export function syntheticEvent({ eventId = crypto.randomUUID(), occurredAt = new Date().toISOString() } = {}) {
+  return { eventId, eventType: 'performance.sample', schemaVersion: 1, occurredAt,
+    attributes: { platform: 'operator-console', metric: 'frame_ms', value: '16' } };
+}
+
 export class ApiError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
@@ -12,7 +17,7 @@ const messages = {
   404: 'This event is not queryable in the current tenant.',
   409: 'This event ID conflicts with an existing payload.',
   413: 'The event exceeds the API payload limit.',
-  429: 'Admission is busy. Retry the same event after the indicated delay.',
+  429: 'Admission is busy. Back off before retrying the same event.',
   503: 'The service is unavailable or its durable buffer is full.'
 };
 
@@ -87,15 +92,23 @@ export function format(value, unit = 'number') {
 }
 
 export function validateEvent(value) {
+  // UX validation of core Event v1; the backend remains the authority.
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('An event must be a JSON object.');
   if (Object.keys(value).some(key => !['eventId', 'eventType', 'schemaVersion', 'occurredAt', 'attributes'].includes(key)))
     throw new Error('Use only the event schema fields. Tenant identity comes from your token.');
   if (!UUID.test(value.eventId || '')) throw new Error('Use a valid UUID for eventId.');
-  if (typeof value.eventType !== 'string' || !value.eventType.trim()) throw new Error('An eventType is required.');
-  if (!Number.isInteger(value.schemaVersion) || value.schemaVersion < 1) throw new Error('schemaVersion must be a positive integer.');
-  if (typeof value.occurredAt !== 'string' || !Number.isFinite(Date.parse(value.occurredAt))) throw new Error('Use an ISO timestamp for occurredAt.');
+  if (!['session.started', 'session.ended', 'performance.sample'].includes(value.eventType))
+    throw new Error('Use session.started, session.ended or performance.sample as the eventType.');
+  if (value.schemaVersion !== 1) throw new Error('This event contract supports schemaVersion 1.');
+  if (typeof value.occurredAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value.occurredAt) ||
+      !Number.isFinite(Date.parse(value.occurredAt)) || new Date(value.occurredAt).getUTCFullYear() < 1 || new Date(value.occurredAt).getUTCFullYear() > 9999)
+    throw new Error('Use an ISO timestamp within years 0001 through 9999 for occurredAt.');
   if (!value.attributes || typeof value.attributes !== 'object' || Array.isArray(value.attributes) ||
       Object.values(value.attributes).some(item => typeof item !== 'string')) throw new Error('Attributes must be an object containing string values.');
+  const allowed = new Set(['platform', 'region', 'sdkVersion', 'statusCode', 'durationMs', 'metric', 'value']);
+  if (Object.keys(value.attributes).length > 7 || Object.entries(value.attributes).some(([key, item]) =>
+    !allowed.has(key) || item.length > 128 || item.includes('\u0000') || !item.isWellFormed()))
+    throw new Error('Use only platform, region, sdkVersion, statusCode, durationMs, metric or value attributes, each at most 128 UTF-16 code units with valid Unicode.');
   if (new TextEncoder().encode(JSON.stringify(value)).length > 16384) throw new Error('The event exceeds the 16 KiB request limit.');
   return { ...value, eventId: value.eventId.toLowerCase() };
 }

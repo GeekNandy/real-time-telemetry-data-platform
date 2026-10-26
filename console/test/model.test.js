@@ -1,11 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { ApiError, acceptedRate, format, matchingEvent, request, validateEvent } from '../public/model.js';
+import { ApiError, acceptedRate, format, matchingEvent, request, syntheticEvent, validateEvent } from '../public/model.js';
 
 const id = '00000000-0000-4000-8000-000000000001';
-const event = () => ({ eventId: id, eventType: 'operator.sample', schemaVersion: 1,
-  occurredAt: '2026-01-01T00:00:00Z', attributes: { kind: 'synthetic' } });
+const event = () => syntheticEvent({ eventId: id, occurredAt: '2026-01-01T00:00:00Z' });
 
 test('rates need comparable process samples and survive counter resets honestly', () => {
   const before = { instanceId: 'a', acceptedTotal: 10, sampledAt: 1000 };
@@ -24,8 +23,12 @@ test('missing operational values remain unknown, while a measured zero is visibl
 test('event input cannot select a tenant or send an unbounded body', () => {
   assert.equal(validateEvent(event()).eventId, id);
   assert.throws(() => validateEvent({ ...event(), tenantId: 'other' }), /Tenant identity/);
-  assert.throws(() => validateEvent({ ...event(), attributes: { secret: 'x'.repeat(17000) } }), /16 KiB/);
+  assert.throws(() => validateEvent({ ...event(), attributes: { platform: 'x'.repeat(17000) } }), /128/);
   assert.throws(() => validateEvent({ ...event(), attributes: { number: 1 } }), /string values/);
+  assert.throws(() => validateEvent({ ...event(), eventType: 'operator.sample' }), /eventType/);
+  assert.throws(() => validateEvent({ ...event(), attributes: { source: 'unsupported' } }), /attributes/);
+  assert.throws(() => validateEvent({ ...event(), schemaVersion: 2 }), /schemaVersion 1/);
+  assert.throws(() => validateEvent({ ...event(), attributes: { platform: '\udc00' } }), /Unicode/);
 });
 
 test('HTTP success alone does not establish event identity', () => {

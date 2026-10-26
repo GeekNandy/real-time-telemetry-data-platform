@@ -1001,11 +1001,9 @@ dialog label span {
   font-size: 10px;
 }
 
-dialog textarea {
+dialog input {
   width: 100%;
-  resize: vertical;
-  min-height: 75px;
-  max-height: 180px;
+  height: 44px;
   background: #10161c;
   color: var(--text);
   border: 1px solid #3c4654;
