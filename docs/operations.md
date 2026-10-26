@@ -113,6 +113,11 @@ mesh; the application HTTP port is internal. Restrict access to that port to the
 configured ingress and metrics peers. Do not expose it with an unrestricted
 LoadBalancer. Kubernetes NetworkPolicies require an enforcing CNI.
 
+The private EKS reference enables VPC CNI network-policy support and encrypted
+EBS storage. Its prerequisite networking, private-runner access, managed Kafka,
+registry, database, backups, restore procedures and secret rotation remain
+operator responsibilities. Read `infra/aws/README.md` before a cloud plan.
+
 ## Retention, privacy and incident exercises
 
 Source and DLT retention defaults to seven days. PostgreSQL rows are removed in
@@ -133,7 +138,7 @@ is implied by this reference project.
 Incident exercise: simulate Kafka loss, full buffer, a collector kill, database
 pause and a schema outage; record detection, accepted IDs, recovery and unresolved
 outcomes. Mark it as a simulation. The executed crash/broker/registry checks are
-listed in `verification.md`; they are not a record of production on-call work.
+published with the PR CI reports; they are not a record of production on-call work.
 
 Registry calls have a deadline for the full response body. A delivered checkpoint
 and file reclamation are separate recoverable states; failed reclamation is retried.

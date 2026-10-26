@@ -52,7 +52,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Install checksum-verified deployment tools
         run: |
-          python3 scripts/install-tools.py --directory "$RUNNER_TEMP/telemetry-tools" helm kubeconform
+          python3 scripts/install-tools.py --directory "$RUNNER_TEMP/telemetry-tools" helm kubeconform terraform
           echo "$RUNNER_TEMP/telemetry-tools" >> "$GITHUB_PATH"
       - name: Validate Helm and Kubernetes API contracts
         run: |
@@ -60,6 +60,12 @@ jobs:
           helm template ci deploy/helm/telemetry -f deploy/helm/telemetry/values-ci.yaml > "$RUNNER_TEMP/telemetry.yaml"
           kubeconform -strict -summary "$RUNNER_TEMP/telemetry.yaml" deploy/kind/dependencies.yaml deploy/kubernetes/storageclass-aws.yaml
           python3 scripts/check-production-chart.py
+      - name: Verify AWS policy without credentials or resource creation
+        run: |
+          terraform -chdir=infra/aws fmt -check -recursive
+          terraform -chdir=infra/aws init -backend=false -input=false -lockfile=readonly
+          terraform -chdir=infra/aws validate
+          terraform -chdir=infra/aws test
   kubernetes-smoke:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
