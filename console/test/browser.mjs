@@ -93,7 +93,7 @@ try {
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await saveScreenshot(page, 'fixture-mobile.png');
     await page.getByRole('link', { name: /Event playground/ }).click();
-    assert.ok(await page.getByRole('heading', { name: 'Event playground.' }).isVisible());
+    await page.getByRole('heading', { name: /Event playground/ }).waitFor({ state: 'visible' });
     await page.reload();
     assert.equal(await page.locator('#session-status').textContent(), 'No credentials');
   });

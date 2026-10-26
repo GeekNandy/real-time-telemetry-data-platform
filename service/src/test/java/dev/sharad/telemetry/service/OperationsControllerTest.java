@@ -48,10 +48,11 @@ class OperationsControllerTest {
 
   @Test
   void eventReadAndWriteScopesDoNotGrantGlobalMetrics() throws Exception {
+    String token = TestTokens.tenant("tenant-a");
     client
         .get()
         .uri("/v1/operations/metrics")
-        .headers(headers -> headers.setBearerAuth(TestTokens.tenant("tenant-a")))
+        .headers(headers -> headers.setBearerAuth(token))
         .exchange()
         .expectStatus()
         .isForbidden();

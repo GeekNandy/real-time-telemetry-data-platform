@@ -89,7 +89,7 @@ $('session-form').addEventListener('submit', event => {
     $('session-error').textContent = 'Provide a token without whitespace, up to 16 KiB.'; return;
   }
   endSession(); accessToken = token; observeToken = observer || token;
-  $('session-status').textContent = 'Credentials loaded'; $('session-status').className = 'badge good';
+  $('session-status').textContent = 'Credentials loaded'; $('session-status').className = 'badge';
   $('session-open').textContent = 'Replace credentials ↗'; $('session-clear').hidden = false;
   $('session-dialog').close(); notice('Credentials loaded. Identity and scopes are verified by the API.');
   refresh();
@@ -174,7 +174,7 @@ async function refresh() {
     $('buffer-age').textContent = format(collector?.oldestBufferedAgeSeconds, 'seconds');
     showStage('ingress', collector); showStage('dispatch', collector); showStage('persistence', worker);
     $('freshness').textContent = `Updated ${new Date().toLocaleTimeString()} · ${collector && worker ? 'both roles' : 'partial data'} · every 5 s`;
-    $('metrics-status').textContent = collector && worker ? 'Fixed-cardinality aggregates · counters reset per process' : 'One role is unavailable or unauthorized; its values remain unknown';
+    $('metrics-status').textContent = collector && worker ? 'Platform-wide totals · reset when each process restarts' : 'One role is unavailable or unauthorized; its values remain unknown';
     drawChart();
   } catch (error) {
     if (version === generation) clearMetrics(error instanceof ApiError ? error.message : 'Metrics are unavailable');

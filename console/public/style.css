@@ -1214,7 +1214,7 @@ code {
   }
 
   .breadcrumb {
-    font-size: 9px;
+    display: none;
   }
 
   .breadcrumb span {
