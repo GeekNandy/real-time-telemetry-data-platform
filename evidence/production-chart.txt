@@ -1,0 +1,11 @@
+Summary: 8 resources found in 1 file - Valid: 8, Invalid: 0, Errors: 0, Skipped: 0
+PASS valid production configuration
+PASS mutable image
+PASS plaintext issuer
+PASS plaintext registry
+PASS plaintext broker
+PASS missing ingress policy
+PASS missing egress policy
+PASS disabled network policy
+PASS single collector
+PASS single worker

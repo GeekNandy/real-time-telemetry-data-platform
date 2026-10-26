@@ -30,7 +30,8 @@ The file-per-record design favors a small, auditable durability protocol over
 maximum write throughput. Fsync, directory updates and per-record files are
 known costs that must be measured. Pending record count and total encoded bytes
 are bounded. File metadata is cached so readiness and metric reads perform no
-disk I/O.
+disk I/O. The byte budget counts encoded records, not filesystem blocks;
+provision volume headroom for metadata, temporary files and filesystem reserves.
 
 ## Explicit failure assumptions
 

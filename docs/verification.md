@@ -1,6 +1,7 @@
 # Verification evidence
 
-Observed 25 October 2026. The implementation is a review candidate with explicit
+Observed 25 October 2026. Exact tested source and suite counts are in
+[`evidence/verification.json`](../evidence/verification.json). The implementation is a review candidate with explicit
 pending deployment checks, not a production-readiness certification.
 
 | Layer | Observed outcome |
