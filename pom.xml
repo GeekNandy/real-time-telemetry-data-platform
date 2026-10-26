@@ -20,6 +20,7 @@
     <module>core</module>
     <module>platform-config</module>
     <module>durable-buffer</module>
+    <module>event-schemas</module>
   </modules>
   <dependencyManagement>
     <dependencies>
