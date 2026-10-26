@@ -1,6 +1,13 @@
-**/target/
 .git
+**/target
+**/.terraform
 .env
-**/__pycache__/
-*.jfr
-output/
+.env.*
+data
+output
+**/*.jfr
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfvars
+**/*.tfplan
+**/__pycache__

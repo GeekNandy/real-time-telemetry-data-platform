@@ -6,3 +6,10 @@
 .vscode/
 __pycache__/
 *.pyc
+data/
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+crash.log

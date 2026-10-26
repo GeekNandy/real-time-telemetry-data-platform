@@ -5,9 +5,9 @@ import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
 
 class CoreContractTest {
-    @TestFactory
-    Stream<DynamicTest> coreContracts() {
-        return CoreContractCases.cases().stream().map(scenario ->
-                DynamicTest.dynamicTest(scenario.name(), () -> scenario.body().run()));
-    }
+  @TestFactory
+  Stream<DynamicTest> coreContracts() {
+    return CoreContractCases.cases().stream()
+        .map(scenario -> DynamicTest.dynamicTest(scenario.name(), () -> scenario.body().run()));
+  }
 }

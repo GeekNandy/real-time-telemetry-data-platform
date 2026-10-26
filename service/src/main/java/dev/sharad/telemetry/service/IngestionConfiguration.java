@@ -1,80 +1,128 @@
 package dev.sharad.telemetry.service;
 
+import dev.sharad.telemetry.buffer.DiskBuffer;
+import dev.sharad.telemetry.config.PlatformSettings;
+import dev.sharad.telemetry.core.DurableLog;
 import dev.sharad.telemetry.core.IngestionEngine;
+import dev.sharad.telemetry.observability.PlatformTelemetry;
+import dev.sharad.telemetry.schema.AvroEventCodec;
 import io.micrometer.core.instrument.FunctionCounter;
 import io.micrometer.core.instrument.MeterRegistry;
-import org.apache.kafka.clients.admin.NewTopic;
-import org.apache.kafka.common.config.TopicConfig;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
+import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.health.contributor.Health;
+import org.springframework.boot.health.contributor.HealthIndicator;
+import org.springframework.context.ApplicationListener;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.codec.ServerCodecConfigurer;
-import org.springframework.kafka.config.TopicBuilder;
+import org.springframework.context.annotation.Profile;
+import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.web.reactive.config.WebFluxConfigurer;
-import tools.jackson.databind.DeserializationFeature;
-import tools.jackson.databind.json.JsonMapper;
 
 @Configuration
+@Profile("!worker")
 public class IngestionConfiguration {
-    @Bean
-    JsonMapper jsonMapper() {
-        return JsonMapper.builder().findAndAddModules()
-                .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
-    }
+  @Bean
+  PlatformSettings platformSettings(
+      @Value("${telemetry.global-capacity}") int capacity,
+      @Value("${telemetry.tenant-capacity}") int tenantCapacity,
+      @Value("${telemetry.send-threads}") int threads,
+      @Value("${telemetry.queue-deadline-ms}") long queueDeadline,
+      @Value("${telemetry.drain-deadline-ms}") long drainDeadline,
+      @Value("${telemetry.buffer.max-bytes}") long bufferBytes,
+      @Value("${telemetry.buffer.max-records}") int records,
+      @Value("${telemetry.buffer.max-record-bytes}") int recordBytes) {
+    return new PlatformSettings(
+        capacity,
+        tenantCapacity,
+        threads,
+        Duration.ofMillis(queueDeadline),
+        Duration.ofMillis(drainDeadline),
+        new PlatformSettings.Buffer(bufferBytes, records, recordBytes));
+  }
 
-    @Bean
-    WebFluxConfigurer requestLimits() {
-        return new WebFluxConfigurer() {
-            @Override public void configureHttpMessageCodecs(ServerCodecConfigurer codecs) {
-                codecs.defaultCodecs().maxInMemorySize(16 * 1024);
-            }
-        };
-    }
+  @Bean(destroyMethod = "close")
+  DiskBuffer diskBuffer(@Value("${telemetry.buffer.path}") Path path, PlatformSettings settings)
+      throws IOException {
+    return new DiskBuffer(path, settings.buffer());
+  }
 
-    @Bean
-    NewTopic eventsTopic(@Value("${telemetry.topic}") String name,
-            @Value("${telemetry.replication-factor}") int replicas,
-            @Value("${telemetry.min-in-sync-replicas}") int minimum) {
-        return topic(name, replicas, minimum);
-    }
+  @Bean(destroyMethod = "")
+  IngestionEngine ingestionEngine(
+      DiskBuffer buffer, AvroEventCodec codec, PlatformSettings settings, MeterRegistry metrics) {
+    var engine =
+        new IngestionEngine(
+            submission -> {
+              var event = submission.event();
+              var entry =
+                  buffer.append(
+                      event.partitionKey(), codec.encode(event), submission.traceHeaders());
+              return CompletableFuture.completedFuture(
+                  new DurableLog.Position("collector-volume", 0, entry.sequence()));
+            },
+            settings.globalCapacity(),
+            settings.tenantCapacity(),
+            settings.appendThreads(),
+            settings.queueDeadline());
+    metrics.gauge(
+        "telemetry.ingestion.inflight", engine, value -> value.snapshot().admission().inFlight());
+    metrics.gauge(
+        "telemetry.ingestion.active.tenants",
+        engine,
+        value -> value.snapshot().admission().activeTenants());
+    metrics.gauge("telemetry.buffer.records", buffer, value -> value.snapshot().records());
+    metrics.gauge("telemetry.buffer.bytes", buffer, value -> value.snapshot().bytes());
+    metrics.gauge(
+        "telemetry.buffer.oldest.age",
+        buffer,
+        value -> value.snapshot().oldestAgeMillis() / 1000.0);
+    FunctionCounter.builder(
+            "telemetry.ingestion.accepted", engine, value -> value.snapshot().accepted())
+        .register(metrics);
+    FunctionCounter.builder(
+            "telemetry.ingestion.failed", engine, value -> value.snapshot().failed())
+        .register(metrics);
+    FunctionCounter.builder(
+            "telemetry.ingestion.rejected", engine, value -> value.snapshot().rejected())
+        .register(metrics);
+    return engine;
+  }
 
-    @Bean
-    NewTopic deadLetterTopic(@Value("${telemetry.dead-letter-topic}") String name,
-            @Value("${telemetry.replication-factor}") int replicas,
-            @Value("${telemetry.min-in-sync-replicas}") int minimum) {
-        return topic(name, replicas, minimum);
-    }
+  @Bean
+  ApplicationListener<ContextClosedEvent> beginDrain(IngestionEngine engine) {
+    return event -> engine.beginDrain();
+  }
 
-    private static NewTopic topic(String name, int replicas, int minimum) {
-        if (replicas < 1 || minimum < 1 || minimum > replicas) {
-            throw new IllegalArgumentException("Invalid replication policy");
-        }
-        return TopicBuilder.name(name).partitions(3).replicas(replicas)
-                .config(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, Integer.toString(minimum))
-                .config(TopicConfig.UNCLEAN_LEADER_ELECTION_ENABLE_CONFIG, "false").build();
-    }
+  @Bean
+  DisposableBean finishDrain(IngestionEngine engine, PlatformSettings settings) {
+    return () -> engine.close(settings.drainDeadline());
+  }
 
-    @Bean(destroyMethod = "close")
-    IngestionEngine ingestionEngine(KafkaTemplate<String, String> kafka, JsonMapper mapper,
-            MeterRegistry metrics, @Value("${telemetry.topic}") String topic,
-            @Value("${telemetry.global-capacity}") int capacity,
-            @Value("${telemetry.tenant-capacity}") int tenantCapacity,
-            @Value("${telemetry.send-threads}") int threads) {
-        var engine = new IngestionEngine(event ->
-                kafka.send(topic, event.partitionKey(), mapper.writeValueAsString(event))
-                        .thenApply(sent -> new dev.sharad.telemetry.core.Broker.Position(
-                                sent.getRecordMetadata().topic(), sent.getRecordMetadata().partition(),
-                                sent.getRecordMetadata().offset())), capacity, tenantCapacity, threads);
-        // Fixed metric names only; no event or tenant labels.
-        metrics.gauge("telemetry.ingestion.inflight", engine, value -> value.snapshot().admission().inFlight());
-        metrics.gauge("telemetry.ingestion.active.tenants", engine, value -> value.snapshot().admission().activeTenants());
-        FunctionCounter.builder("telemetry.ingestion.accepted", engine, value -> value.snapshot().accepted())
-                .register(metrics);
-        FunctionCounter.builder("telemetry.ingestion.failed", engine, value -> value.snapshot().failed())
-                .register(metrics);
-        FunctionCounter.builder("telemetry.ingestion.rejected", engine, value -> value.snapshot().rejected())
-                .register(metrics);
-        return engine;
-    }
+  @Bean
+  BufferDispatcher bufferDispatcher(
+      DiskBuffer buffer,
+      KafkaTemplate<String, byte[]> kafka,
+      PlatformTelemetry telemetry,
+      @Value("${telemetry.topic}") String topic,
+      MeterRegistry meters) {
+    return new BufferDispatcher(buffer, kafka, telemetry, topic, meters);
+  }
+
+  @Bean
+  HealthIndicator collectorBufferHealthIndicator(
+      DiskBuffer buffer, IngestionEngine engine, BufferDispatcher dispatcher) {
+    return () -> {
+      var snapshot = buffer.snapshot();
+      boolean ready =
+          engine.snapshot().admission().accepting()
+              && dispatcher.fatalFailure() == null
+              && snapshot.records() < snapshot.maxRecords()
+              && snapshot.bytes() < snapshot.maxBytes();
+      return ready ? Health.up().build() : Health.outOfService().build();
+    };
+  }
 }

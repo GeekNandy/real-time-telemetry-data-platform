@@ -1,0 +1,14 @@
+telemetry:
+  component: collector
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration
+      - org.springframework.boot.jdbc.autoconfigure.JdbcTemplateAutoConfiguration
+management:
+  endpoint:
+    health:
+      group:
+        readiness:
+          include: readinessState,collectorBuffer

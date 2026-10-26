@@ -7,9 +7,13 @@ import java.util.Map;
 import java.util.UUID;
 
 /** tenantId is deliberately absent: ownership comes exclusively from the verified JWT. */
-public record EventRequest(@NotNull UUID eventId, @NotNull String eventType, int schemaVersion,
-                           @NotNull Instant occurredAt, @NotNull Map<String, String> attributes) {
-    public Event forTenant(String verifiedTenant) {
-        return new Event(eventId, verifiedTenant, eventType, schemaVersion, occurredAt, attributes);
-    }
+public record EventRequest(
+    @NotNull UUID eventId,
+    @NotNull String eventType,
+    int schemaVersion,
+    @NotNull Instant occurredAt,
+    @NotNull Map<String, String> attributes) {
+  public Event forTenant(String verifiedTenant) {
+    return new Event(eventId, verifiedTenant, eventType, schemaVersion, occurredAt, attributes);
+  }
 }
