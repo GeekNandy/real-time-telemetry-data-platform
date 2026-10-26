@@ -19,7 +19,7 @@ pending deployment checks, not a production-readiness certification.
 | PostgreSQL integration | Ten-container-backed test cases compile; execution pending because Docker is unavailable |
 | Container and kind | Build, Compose runtime and Kubernetes smoke checks are written in CI but have not run |
 | End-to-end load/JFR | Bounded harness and profiling protocol provided; no measured pipeline capacity or whole-service profiling result |
-| Review/publication | Local feature history exists; remote Git bootstrap, draft PR, CI and independent review remain pending |
+| Review/publication | README-only main is initialized; feature publication and draft PR are in progress. CI and independent review remain pending |
 
 ## Executed JVM checks
 

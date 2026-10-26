@@ -1,7 +1,8 @@
 # Contribution workflow
 
-The initial main commit is intentionally empty. Work begins on a feature branch,
-then enters main through a pull request.
+The initial main commit contains only README.md. Implementation, build, CI and
+operational changes belong on a feature branch and are proposed through a pull request.
+Keep main limited to README.md until the owner explicitly approves a merge.
 
 1. Branch from the current main for an independent change.
 2. Make cohesive commits that explain behavior and rationale.

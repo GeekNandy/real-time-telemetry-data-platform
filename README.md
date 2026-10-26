@@ -93,7 +93,8 @@ one broker. Its fault model differs from the replicated deployment.
 - [Kubernetes deployment](deploy/helm/telemetry/README.md)
 - [AWS infrastructure reference](infra/aws/README.md)
 
-The initial `main` tree is empty. All source, documentation and CI changes live
-on `feature/platform-foundation` and must be proposed through a PR. Remote publication is pending the initial
-empty commit; no implementation PR is open yet. No independent
-review, production deployment or employment experience is implied by this repository.
+The `main` branch contains only the project overview. All implementation,
+documentation and CI changes live on `feature/platform-foundation` and are
+proposed through a draft PR. Keep main limited to its README until the owner
+explicitly approves a merge. The verification record distinguishes observed
+results from pending CI, deployment, profiling and independent review.

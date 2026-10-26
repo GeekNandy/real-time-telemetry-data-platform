@@ -1,7 +1,7 @@
 # Working agreement
 
 All implementation, documentation and CI changes belong on a feature branch.
-Keep the initial main tree empty while the foundation is under review.
+Keep main limited to README.md while the foundation is under review.
 
 - Work against the acceptance gates in issue #1 and docs/role-alignment.md.
 - Treat acceptance, replay and offset ordering as contracts; test failure paths.
