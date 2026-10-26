@@ -1,12 +1,17 @@
 package dev.sharad.telemetry.service;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.micrometer.core.instrument.FunctionCounter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,7 +30,11 @@ import org.springframework.test.web.reactive.server.WebTestClient;
       "telemetry.security.issuer=https://issuer.test",
       "telemetry.security.demo-secret=test-only-key-with-at-least-thirty-two-bytes"
     })
-@Import({SecurityConfiguration.class, OperationsControllerTest.Meters.class})
+@Import({
+  SecurityConfiguration.class,
+  OperationsConfiguration.class,
+  OperationsControllerTest.Meters.class
+})
 class OperationsControllerTest {
   @Autowired WebTestClient client;
   @Autowired MeterRegistry meters;
@@ -120,6 +129,67 @@ class OperationsControllerTest {
         .strongReference(true)
         .register(meters);
     observe().exchange().expectStatus().isOk().expectBody().jsonPath("$.bufferRecords").isEmpty();
+  }
+
+  @Test
+  void evaluatesMeterCallbacksOnTheDedicatedWorker() throws Exception {
+    var thread = new AtomicReference<String>();
+    Gauge.builder(
+            "telemetry.buffer.records",
+            () -> {
+              thread.set(Thread.currentThread().getName());
+              assertFalse(reactor.core.scheduler.Schedulers.isInNonBlockingThread());
+              return 3.0;
+            })
+        .strongReference(true)
+        .register(meters);
+    observe().exchange().expectStatus().isOk();
+    assertTrue(thread.get().startsWith("telemetry-operations-"));
+  }
+
+  @Test
+  void aContendedBufferGaugeTimesOutWhileTheRequestThreadRemainsResponsive() throws Exception {
+    Object gate = new Object();
+    var locked = new CountDownLatch(1);
+    var release = new CountDownLatch(1);
+    var entered = new CountDownLatch(1);
+    Thread owner =
+        Thread.ofPlatform()
+            .start(
+                () -> {
+                  synchronized (gate) {
+                    locked.countDown();
+                    try {
+                      release.await(10, TimeUnit.SECONDS);
+                    } catch (InterruptedException error) {
+                      Thread.currentThread().interrupt();
+                    }
+                  }
+                });
+    try {
+      assertTrue(locked.await(2, TimeUnit.SECONDS));
+      Gauge.builder(
+              "telemetry.buffer.records",
+              () -> {
+                entered.countDown();
+                synchronized (gate) {
+                  return 3.0;
+                }
+              })
+          .strongReference(true)
+          .register(meters);
+      observe()
+          .exchange()
+          .expectStatus()
+          .isEqualTo(503)
+          .expectHeader()
+          .valueEquals("Cache-Control", "no-store");
+      assertEquals(0, entered.getCount());
+      assertEquals(1, release.getCount());
+    } finally {
+      release.countDown();
+      owner.join(5000);
+    }
   }
 
   private WebTestClient.RequestHeadersSpec<?> observe() throws Exception {

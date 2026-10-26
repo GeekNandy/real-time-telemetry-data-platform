@@ -50,8 +50,8 @@ The completed foundation's eighth PR is
 with [passing run 40362033941](https://github.com/GeekNandy/real-time-telemetry-data-platform/actions/runs/40362033941).
 That run establishes the 86-case foundation result described above.
 
-The operator-console change adds five Java HTTP/metrics contracts, bringing the
-complete Java suite to 91 cases, plus eight Node client contracts and eight
+The operator-console change adds seven Java HTTP/metrics contracts, bringing the
+complete Java suite to 93 cases, plus eight Node client contracts and eight
 Chromium fixture workflows. Its Compose smoke also performs a real browser
 submission and matching PostgreSQL-backed lookup, verifies the fixed proxy
 allowlist and observer authorization, and checks automatic Grafana provisioning

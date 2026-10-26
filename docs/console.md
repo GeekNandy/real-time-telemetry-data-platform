@@ -65,8 +65,11 @@ authorization authority.
 ## Bounded operation
 
 `GET /v1/operations/metrics` reads a fixed set of existing Micrometer meters. It
-performs no filesystem, registry, Kafka or JDBC operation on the event loop and
-never enumerates tenants or accepts user-selected metric names. Missing or
+never enumerates tenants or accepts user-selected metric names. Gauge callbacks
+can wait on the buffer lock held during file synchronization, so sampling runs
+on a dedicated worker with at most eight queued tasks and a one-second response
+deadline. Timeout or saturation returns HTTP 503. The HTTP event loop never
+waits for those meter callbacks. Missing or
 nonfinite values are `null`, not manufactured zeros. Snapshots include a process
 instance ID so counter resets do not produce false throughput spikes.
 
@@ -97,7 +100,8 @@ npm --prefix console test
 npm --prefix console run test:browser
 ```
 
-The eight browser contracts use explicitly synthetic HTTP fixtures for error,
+The seven Java HTTP/metrics cases include worker isolation and a contended-gauge
+deadline regression. The eight browser contracts use explicitly synthetic HTTP fixtures for error,
 identity, cancellation, rendering and mobile cases. Their screenshots are labeled
 `fixture-*`. These are separate from the actual Compose browser check, which
 clicks through submission, receipt validation and tenant-scoped query visibility
