@@ -233,12 +233,16 @@ public final class CoreContractCases {
   private static void cancellation() throws Exception {
     var broker = new ControlledLog();
     try (var engine = new IngestionEngine(broker, 1, 1, 1)) {
-      var view = engine.accept(event("a")).toCompletableFuture();
+      var acceptance = engine.accept(event("a"));
+      var view = acceptance.toCompletableFuture();
       var pending = broker.next();
       view.cancel(true);
       expect(AdmissionController.Rejected.class, () -> engine.accept(event("b")));
       check(!pending.isCancelled(), "Caller cancelled the actual broker operation");
       pending.complete(new DurableLog.Position("events", 0, 1));
+      // Provider completion can race with callback registration on the worker.
+      acceptance.toCompletableFuture().get(2, TimeUnit.SECONDS);
+      check(view.isCancelled(), "Provider completion changed the cancelled client view");
       check(engine.snapshot().admission().inFlight() == 0, "Cancelled client leaked capacity");
     }
   }
