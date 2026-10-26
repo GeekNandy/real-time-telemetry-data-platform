@@ -45,6 +45,15 @@ The complete integration suite requires Docker and runs without silently skippin
 ./mvnw --batch-mode --no-transfer-progress -Pintegration verify
 ```
 
+## Local deployment
+
+```bash
+./scripts/dev-up.sh
+./scripts/demo-event.sh
+```
+
+The Compose stack binds host ports to loopback and uses generated demo credentials. The [Helm deployment](deploy/helm/telemetry/README.md) uses independent collector and worker workloads, retained collector PVCs, non-root execution and explicit network policy. `./scripts/kind-smoke.sh` builds the image, reconciles twenty accepted IDs and restarts the collector. This is a correctness smoke, not a capacity result.
+
 ## Development
 
 Changes are proposed from feature branches and merged through PRs after the relevant checks pass. The foundation was extracted from [draft PR #2](https://github.com/GeekNandy/real-time-telemetry-data-platform/pull/2); the [review sequence](docs/review-sequence.md) explains its decomposition. Owner-authorized merging is not independent human approval.

@@ -1,30 +1,139 @@
-# Runtime operations
+# Operating the platform
 
-JDK 21 runs the service JAR and its adjacent lib directory. Use an explicit
-SPRING_PROFILES_ACTIVE=collector or worker for independent scaling. With neither
-role selected, the application combines both roles. Configure external issuer,
-broker, registry, volume and database settings for the actual environment.
+## Local demonstration
 
-HTTP acceptance follows a synchronized append to the collector's persistent
-volume; Kafka and database delivery are asynchronous. Monitor buffer bytes/count,
-oldest age, dispatch failures, consumer lag, database pool waits and persistence
-failures. Reconcile accepted IDs after recovery; process readiness alone is insufficient.
+Use Java 21, Python3, Docker Engine and Compose v2. Run `./scripts/dev-up.sh` from
+the repository root. It generates ignored local credentials, starts dependencies
+and waits for both application readiness endpoints. Add `--profile observability`
+to start Prometheus. The demo has one Kafka broker and local volumes; it is not HA.
 
-Transient admission exhaustion returns 429. Full buffer, unconfirmed append,
-draining or unavailable query storage returns retryable 503. Preserve the same
-event ID and payload after an ambiguous outcome. Never clear an alert by deleting
-pending files, skipping offsets or lowering Kafka's durability policy.
+- Collector HTTP: `http://127.0.0.1:8080`.
+- Worker queries: `http://127.0.0.1:8082`.
+- Schema Registry: `http://127.0.0.1:8081`.
+- Jaeger traces: `http://127.0.0.1:16686` (transient in-memory storage).
+- Optional Prometheus: `http://127.0.0.1:9090`.
 
-JWT verification requires issuer, audience, expiry, tenant_id and an appropriate
-telemetry.write, telemetry.read or telemetry.observe scope. Protect the internal
-HTTP port with trusted TLS termination and network controls. Production policy
-requires external authentication, HTTPS registry/issuer, Kafka TLS and PostgreSQL
-sslmode=verify-full. Schema registration uses a separate deployment identity.
+Run `./scripts/demo-event.sh`; retrieve its ID from the worker using the token
+from `python3 scripts/demo-token.py --tenant demo`. A 202 response means the
+collector synced its persistent volume. It does not mean PostgreSQL is already
+queryable. Query 404 can be transient immediately after acceptance.
 
-SIGTERM stops admission, waits for real appends within its deadline and preserves
-pending spool entries for replay. Preserve corrupt volumes for investigation.
-Do not infer volume replication or availability-zone survival from process restart tests.
+`docker compose stop` retains state. `docker compose down -v` destroys all local
+volumes, including potentially acknowledged buffered events; use it only when
+that data can be discarded. Demo credentials and bearer tokens must never be
+committed. The issuer and HS256 mode are explicitly for local development.
 
-See [design](design.md), [buffer recovery](buffer.md), [schema contracts](schemas.md)
-and [worker operations](worker.md). The integration profile uses real ephemeral
-dependencies and records observed outcomes through the PR's CI reports.
+## Kafka outage or volume pressure
+
+Watch `telemetry_buffer_records`, `telemetry_buffer_bytes`,
+`telemetry_buffer_oldest_age` (seconds) and dispatch failures. Inspect broker
+leaders, ISR and producer errors. A blocked dispatcher retains its head record;
+confirmed Kafka publication precedes checkpoint advancement and reclamation.
+The HTTP service continues accepting until its configured volume or record
+budget is exhausted, then returns 503 with `Retry-After`. Transient concurrent
+admission exhaustion returns 429. Retry with the same event ID and identical
+content. A timeout or 503 may be ambiguous; never generate a replacement ID.
+
+Restore broker connectivity or ISR before resizing. Do not lower minISR, enable
+unclean election, delete pending files, share a spool between collectors or
+scale a collector onto an empty volume to make an alert disappear. Graceful
+shutdown leaves unpublished records on its retained volume. If a volume is
+corrupt, preserve a snapshot, stop its owner, reconcile accepted IDs against
+Kafka/PostgreSQL and investigate the failed checksum before attempting recovery.
+There is no automatic repair that can prove the contents of a lost volume.
+
+The replica test covers data-plane leader failure and loss of minISR. It has one
+controller and does not establish controller-quorum or availability-zone HA.
+
+## Database outage and offsets
+
+Workers retry database failures without committing the affected source offset.
+Intake can continue through Kafka while retention and capacity permit it. Query
+storage failures return 503. Compare consumer-group committed offsets with the
+source log end, database pool waits and persistence failures. Restore storage,
+then require lag to drain and reconcile acknowledged IDs; a green process alone
+is insufficient. Do not skip offsets to clear lag.
+
+The transaction inserts `(tenant_id,event_id)` once and compares a canonical
+fingerprint on replay. Identical replay is a duplicate; different content under
+the same identity is quarantined. This is idempotent storage within the retained
+identity window, not a global exactly-once claim across all external systems.
+
+## Registry, poison records and DLT
+
+Deploy schema changes with a separate migration identity:
+`python3 scripts/schema-bootstrap.py --registry-url https://registry.example`.
+Supply `SCHEMA_REGISTRY_AUTHORIZATION` through the secret system. Applications
+in production are read-only registry clients. Both bundled versions must be
+registered before cold startup. The bootstrap refuses a conflicting existing
+compatibility policy and registers versions under FULL_TRANSITIVE.
+
+A registry outage is retryable infrastructure failure. An invalid wire envelope,
+unknown schema ID or mismatched partition key is poison. Poison and fingerprint
+collisions route to the DLT; its confirmed publication precedes source offset
+advancement. DLT publication failure must not be worked around by committing the
+source. Restrict DLT access as strictly as source access: it contains original
+payloads. Inspect and repair in an isolated environment, preserve the tenant and
+event identity and replay through a controlled producer. Do not replay collisions
+until the conflicting producer behavior is understood.
+
+## Metrics and authentication
+
+JWT verification requires issuer, audience, expiry, a valid `tenant_id` and the
+appropriate scope: `telemetry.write`, `telemetry.read` or `telemetry.observe`.
+Health endpoints expose no component details. Every query is tenant-qualified;
+clients cannot choose an ingestion tenant in the body.
+
+The shared telemetry library uses stable stage labels, not tenant IDs or event
+IDs. Only bounded W3C trace context crosses the spool and Kafka; baggage and
+Authorization are not propagated. Prometheus in the demo uses a metrics-only JWT
+that expires after one hour. Refresh it by rerunning `dev-up.sh`; production
+scrapers require issuer-supported token rotation. A scrape failure may indicate
+token expiry rather than an application outage.
+
+Import `deploy/observability/dashboard.json` into Grafana with a Prometheus data
+source. The alert rules are starting thresholds for the demo, not measured SLOs.
+They need routing and workload-specific tuning before operational use.
+
+## Kubernetes rollout and production transport
+
+See `deploy/helm/telemetry`. Collectors are StatefulSets with exclusive retained
+PVCs; workers are separately scalable Deployments. Retained PVCs and EBS volumes
+remain after scale-down or release deletion. Inventory and drain them before
+intentional decommissioning. A node/AZ outage can leave a volume unavailable;
+PDBs and replicas do not replicate collector buffers or make an RWO volume
+multi-zone. Preserve every old ordinal's volume during a rollout.
+
+The chart requires image digests, HTTPS issuer/registry, TLS Kafka, explicit
+network peers and at least two replicas per role in production. Put secrets in
+the existing Kubernetes Secret; mount private CA material and configure JVM,
+Kafka and PostgreSQL trust when public CAs do not suffice. The database URL must
+use `sslmode=verify-full`. Terminate client TLS in a trusted ingress or service
+mesh; the application HTTP port is internal. Restrict access to that port to the
+configured ingress and metrics peers. Do not expose it with an unrestricted
+LoadBalancer. Kubernetes NetworkPolicies require an enforcing CNI.
+
+## Retention, privacy and incident exercises
+
+Source and DLT retention defaults to seven days. PostgreSQL rows are removed in
+bounded batches after thirty days measured from storage time; the retention
+index supports that sweep. Spool records are reclaimed only after confirmed
+publication. Persistent outages can therefore retain spool data longer than
+normal retention. Alert and reconcile before any manual deletion.
+
+The attribute allowlist and length limits reduce collection; they do not prevent
+a producer from putting personal data into an allowed value. Use synthetic data
+for demonstrations and agree purpose, lawful basis, tenant lifecycle and retention
+with the real service owner. Deleting a PostgreSQL row does not erase Kafka,
+DLT, spool files, traces, snapshots or backups. An erasure request needs a data
+inventory and a coordinated workflow for each copy. Backup expiry and encrypted
+volume snapshots must be included. No GDPR certification or compliance conclusion
+is implied by this reference project.
+
+Incident exercise: simulate Kafka loss, full buffer, a collector kill, database
+pause and a schema outage; record detection, accepted IDs, recovery and unresolved
+outcomes. Mark it as a simulation. The executed crash/broker/registry checks are
+listed in `verification.md`; they are not a record of production on-call work.
+
+Registry calls have a deadline for the full response body. A delivered checkpoint
+and file reclamation are separate recoverable states; failed reclamation is retried.

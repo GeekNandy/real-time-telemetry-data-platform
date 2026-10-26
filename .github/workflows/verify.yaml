@@ -29,6 +29,11 @@ jobs:
         run: ./mvnw --batch-mode --no-transfer-progress -f tools/schema-registry-runtime/pom.xml org.apache.maven.plugins:maven-dependency-plugin:3.9.0:build-classpath -Dmdep.outputFile=target/classpath.txt
       - name: Test real HTTP, crash recovery, Kafka, registry and PostgreSQL
         run: ./mvnw --batch-mode --no-transfer-progress -Pintegration verify
+      - name: Validate Compose configuration
+        env:
+          DATABASE_PASSWORD: ci-synthetic-password
+          DEMO_JWT_SECRET: ci-only-demo-key-at-least-thirty-two-bytes
+        run: docker compose config --quiet
       - name: Collect reports
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -37,4 +42,42 @@ jobs:
           path: |
             **/target/surefire-reports/
             **/target/failsafe-reports/
+          if-no-files-found: error
+  deployment-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Install checksum-verified deployment tools
+        run: |
+          python3 scripts/install-tools.py --directory "$RUNNER_TEMP/telemetry-tools" helm kubeconform
+          echo "$RUNNER_TEMP/telemetry-tools" >> "$GITHUB_PATH"
+      - name: Validate Helm and Kubernetes API contracts
+        run: |
+          helm lint deploy/helm/telemetry -f deploy/helm/telemetry/values-ci.yaml
+          helm template ci deploy/helm/telemetry -f deploy/helm/telemetry/values-ci.yaml > "$RUNNER_TEMP/telemetry.yaml"
+          kubeconform -strict -summary "$RUNNER_TEMP/telemetry.yaml" deploy/kind/dependencies.yaml deploy/kubernetes/storageclass-aws.yaml
+          python3 scripts/check-production-chart.py
+  kubernetes-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    needs: [contracts-and-integration, deployment-contracts]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Install checksum-verified Kubernetes tools
+        run: |
+          python3 scripts/install-tools.py --directory "$RUNNER_TEMP/telemetry-tools" helm kind
+          echo "$RUNNER_TEMP/telemetry-tools" >> "$GITHUB_PATH"
+      - name: Verify the isolated Compose runtime
+        run: ./scripts/compose-smoke.sh
+      - name: Build, deploy, reconcile HTTP202 IDs and roll collector
+        run: ./scripts/kind-smoke.sh
+      - name: Collect synthetic deployment reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: deployment-smoke
+          path: |
+            data/kind-smoke/
+            data/compose-smoke/
           if-no-files-found: error
