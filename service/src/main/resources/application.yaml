@@ -1,0 +1,60 @@
+server:
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  shutdown: graceful
+spring:
+  application:
+    name: real-time-telemetry-data-platform
+  lifecycle:
+    timeout-per-shutdown-phase: 15s
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/telemetry?connectTimeout=2&socketTimeout=5&options=-c%20statement_timeout=3000}
+    username: ${DATABASE_USER:telemetry}
+    password: ${DATABASE_PASSWORD:}
+    hikari:
+      maximum-pool-size: 8
+      connection-timeout: 2000
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        max.block.ms: 2000
+        request.timeout.ms: 2000
+        delivery.timeout.ms: 5000
+        linger.ms: 5
+        buffer.memory: 16777216
+        max.request.size: 32768
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+      max-poll-records: 50
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+telemetry:
+  topic: telemetry.events.v1
+  dead-letter-topic: telemetry.events.v1.dlt
+  consumer-group: telemetry-persistence-v1
+  global-capacity: 256
+  tenant-capacity: 64
+  send-threads: 4
+  replication-factor: 1
+  min-in-sync-replicas: 1
+  security:
+    mode: ${JWT_MODE:issuer}
+    issuer: ${JWT_ISSUER:}
+    audience: ${JWT_AUDIENCE:telemetry}
+    demo-secret: ${DEMO_JWT_SECRET:}

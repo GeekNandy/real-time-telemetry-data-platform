@@ -1,0 +1,41 @@
+name: Verify
+on:
+  push:
+    branches: [main, 'feature/**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  contracts-and-integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Verify compiler warnings and core contracts
+        run: ./scripts/verify-core.sh
+      - name: Build and test against real Kafka and PostgreSQL
+        run: mvn --batch-mode --no-transfer-progress -Pintegration verify
+      - name: Check container build
+        env:
+          DATABASE_PASSWORD: ci-only-local-password
+          DEMO_JWT_SECRET: ci-only-demo-key-at-least-thirty-two-bytes
+        run: docker compose build service
+      - name: Collect reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: verification-reports
+          path: |
+            **/target/surefire-reports/
+            **/target/failsafe-reports/
+          if-no-files-found: warn

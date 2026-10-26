@@ -1,0 +1,6 @@
+**/target/
+.git
+.env
+**/__pycache__/
+*.jfr
+output/

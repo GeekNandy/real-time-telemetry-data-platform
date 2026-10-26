@@ -1,0 +1,8 @@
+**/target/
+.env
+*.log
+*.jfr
+.idea/
+.vscode/
+__pycache__/
+*.pyc
