@@ -27,8 +27,8 @@ jobs:
           for source in scripts/*.sh; do bash -n "$source"; done
       - name: Resolve isolated real Schema Registry runtime
         run: ./mvnw --batch-mode --no-transfer-progress -f tools/schema-registry-runtime/pom.xml org.apache.maven.plugins:maven-dependency-plugin:3.9.0:build-classpath -Dmdep.outputFile=target/classpath.txt
-      - name: Test real HTTP, crash recovery, Kafka and registry
-        run: ./mvnw --batch-mode --no-transfer-progress -Pregistry-integration verify
+      - name: Test real HTTP, crash recovery, Kafka, registry and PostgreSQL
+        run: ./mvnw --batch-mode --no-transfer-progress -Pintegration verify
       - name: Collect reports
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

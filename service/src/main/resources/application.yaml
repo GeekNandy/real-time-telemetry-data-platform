@@ -3,12 +3,17 @@ server:
   port: ${SERVER_PORT:8080}
   shutdown: graceful
 spring:
-  profiles:
-    default: collector
   application:
     name: real-time-telemetry-data-platform
   lifecycle:
     timeout-per-shutdown-phase: 15s
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/telemetry?connectTimeout=2&socketTimeout=5&options=-c%20statement_timeout=3000}
+    username: ${DATABASE_USER:telemetry}
+    password: ${DATABASE_PASSWORD:}
+    hikari:
+      maximum-pool-size: 8
+      connection-timeout: 2000
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:

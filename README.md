@@ -37,6 +37,14 @@ The collector validates JWT identity and scopes, derives the tenant from the tok
 ./mvnw --batch-mode --no-transfer-progress -Pregistry-integration verify
 ```
 
+The independent persistence worker commits Kafka offsets after a PostgreSQL transaction or confirmed dead-letter publication. Identical tenant/event replays are idempotent within the retention window; conflicting payloads are quarantined. [Worker operations](docs/worker.md) covers retrieval, retention and failure handling.
+
+The complete integration suite requires Docker and runs without silently skipping missing infrastructure:
+
+```bash
+./mvnw --batch-mode --no-transfer-progress -Pintegration verify
+```
+
 ## Development
 
 Changes are proposed from feature branches and merged through PRs after the relevant checks pass. The foundation was extracted from [draft PR #2](https://github.com/GeekNandy/real-time-telemetry-data-platform/pull/2); the [review sequence](docs/review-sequence.md) explains its decomposition. Owner-authorized merging is not independent human approval.
