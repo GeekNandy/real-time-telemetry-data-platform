@@ -25,6 +25,8 @@ jobs:
           ./scripts/verify-core.sh
           python3 -m py_compile scripts/*.py
           for source in scripts/*.sh; do bash -n "$source"; done
+      - name: Test readiness retry contracts
+        run: python3 scripts/test-wait-ready.py
       - name: Resolve isolated real Schema Registry runtime
         run: ./mvnw --batch-mode --no-transfer-progress -f tools/schema-registry-runtime/pom.xml org.apache.maven.plugins:maven-dependency-plugin:3.9.0:build-classpath -Dmdep.outputFile=target/classpath.txt
       - name: Test real HTTP, crash recovery, Kafka, registry and PostgreSQL
