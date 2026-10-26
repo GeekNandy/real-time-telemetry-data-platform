@@ -3,6 +3,7 @@ package dev.sharad.telemetry.service;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import io.micrometer.core.instrument.FunctionCounter;
+import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.concurrent.atomic.AtomicLong;
@@ -13,6 +14,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
 @WebFluxTest(
@@ -29,6 +31,7 @@ class OperationsControllerTest {
   @Autowired MeterRegistry meters;
 
   @TestConfiguration
+  @EnableWebFluxSecurity
   static class Meters {
     @Bean
     MeterRegistry meters() {
@@ -63,9 +66,9 @@ class OperationsControllerTest {
     var count = new AtomicLong(8);
     FunctionCounter.builder("telemetry.ingestion.accepted", count, AtomicLong::doubleValue)
         .register(meters);
-    meters.gauge("telemetry.buffer.records", 3);
-    meters.gauge("telemetry.buffer.bytes", 1024);
-    meters.gauge("telemetry.buffer.oldest.age", 2.5);
+    Gauge.builder("telemetry.buffer.records", () -> 3.0).strongReference(true).register(meters);
+    Gauge.builder("telemetry.buffer.bytes", () -> 1024.0).strongReference(true).register(meters);
+    Gauge.builder("telemetry.buffer.oldest.age", () -> 2.5).strongReference(true).register(meters);
     meters.counter("tenant-secret", "event-id", "private-event").increment();
     observe()
         .exchange()
@@ -93,6 +96,7 @@ class OperationsControllerTest {
               assertFalse(json.contains("tenant-secret"));
               assertFalse(json.contains("private-event"));
             });
+    java.lang.ref.Reference.reachabilityFence(count);
   }
 
   @Test
@@ -112,7 +116,9 @@ class OperationsControllerTest {
 
   @Test
   void nonfiniteGaugeValuesRemainUnknown() throws Exception {
-    meters.gauge("telemetry.buffer.records", Double.NaN);
+    Gauge.builder("telemetry.buffer.records", () -> Double.NaN)
+        .strongReference(true)
+        .register(meters);
     observe().exchange().expectStatus().isOk().expectBody().jsonPath("$.bufferRecords").isEmpty();
   }
 
