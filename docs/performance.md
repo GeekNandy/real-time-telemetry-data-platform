@@ -1,59 +1,68 @@
-# Performance methodology
+# Performance and profiling protocol
 
-No Kafka/PostgreSQL throughput or end-to-end latency result is currently claimed.
+No pipeline throughput, end-to-end p99 or production capacity is claimed.
 
-## Component overhead experiment
+## HTTP experiment
+
+After `./scripts/dev-up.sh`, use a token file rather than a bearer token in command
+arguments. Keep the output under ignored `data/` until it is reviewed:
 
 ```bash
-./scripts/benchmark-core.sh 8 50000 > core/target/core-overhead.json
-PROFILE=1 ./scripts/benchmark-core.sh 8 50000 > core/target/core-overhead-profiled.json
+umask 077
+python3 scripts/demo-token.py --tenant experiment > data/auth/experiment.token
+python3 scripts/load.py --token-file data/auth/experiment.token \
+  --rate 10 --duration 10 --concurrency 16 --output data/experiments/run-01
 ```
 
-The harness measures admission, executor dispatch and future completion using
-an immediately completed broker double. It reuses a prebuilt event and does
-not serialize, fingerprint, authenticate, use a network or persist data.
+The generator follows a fixed schedule independently of request completion. Its
+bounded executor records client-capacity drops instead of silently reducing the
+offered rate. It records scheduled, started and completed times separately,
+HTTP outcomes, raw synthetic IDs, transport ambiguity and nearest-rank
+percentiles. The reconciliation phase queries every 202 ID until visibility or a
+settlement deadline; zero accepted requests cannot pass reconciliation. Ambiguous
+transport outcomes are tracked separately and are not silently counted as losses.
 
-Each of eight closed-loop clients has one outstanding operation. Each client
-warms up for 10,000 operations before collecting 50,000 samples. Percentiles use
-nearest rank over the combined samples. The fixed send pool has four workers.
-The harness reconciles every completion and rejects runs with a failure,
-rejection or outstanding lease.
+Visibility is measured during a post-load reconciliation sweep. That measurement
+includes sweep/polling delay and is an upper bound; it is not an instrumented
+commit timestamp or an end-to-end latency SLO. HTTP elapsed time covers local
+volume acceptance. It does not cover Kafka acknowledgement or PostgreSQL commit.
 
-The output records the source commit, dirty state, JVM arguments, platform,
-processor count, workload and exclusions. Record container CPU/memory quotas,
-host contention and multiple fresh JVM forks alongside results. JFR profiling
-changes the workload and its results must be reported separately.
-The profiling configuration disables initial environment variables, initial
-system properties and system-process metadata in recordings intended for sharing.
+The short CI run establishes HTTP/persistence correctness. For capacity work,
+warm the system separately, run at least ten minutes at each rate and use three
+fresh application runs. Save the full range of results and rejections. Measure
+consumer lag and resource use concurrently; a post-load visibility sweep alone
+cannot establish a real-time persistence SLO. Increase the offered rate until a
+stated latency, rejection, lag or resource budget fails. Record payload sizes,
+tenant mix, CPU/memory quotas, volume filesystem/IOPS, dependency versions and
+image digests, source revision and dirty state. Separate the generator host from
+the system under test and check generator delay before interpreting saturation.
 
-A short closed-loop component run cannot justify a capacity estimate or a
-production latency SLO. It has coordinated omission: slow completions reduce
-the request arrival rate. Use it to investigate local overhead, not to advertise
-hundreds of thousands of persisted events per second.
+## Whole-service Java profiling
 
-## End-to-end experiment required before publishing capacity
+The image includes `profile-safe.jfc`, based on the JDK profiling configuration
+with initial environment, initial system properties and system-process events
+disabled. Start an isolated collector/worker experiment with an extra JVM option:
 
-Use an external, open-loop generator with a fixed arrival schedule and bounded
-client concurrency. Record both scheduled and actual start times to detect
-generator saturation. Preserve event IDs for all acknowledged requests and
-retain ambiguous outcomes separately.
+```
+-XX:StartFlightRecording=filename=/profiles/collector.jfr,settings=/app/profile-safe.jfc,dumponexit=true,maxsize=128m,maxage=5m
+```
 
-For each arrival rate, include warmup, at least ten minutes of measurement and
-a drain/reconciliation phase. Increase offered load until rejection, latency,
-lag or resource limits violate the proposed budget. Run at least three fresh
-forks and report the range, rather than selecting the best run.
+Use a Compose override for that role's `JAVA_TOOL_OPTIONS`, retaining its resource
+limits. Give the worker a different filename. After the workload, stop both roles
+gracefully to dump recordings and use `docker compose cp` to copy `/profiles` out.
+Use `jfr summary` and JDK Mission Control to inspect CPU samples, allocation,
+lock/park contention, filesystem latency and GC. Compare profiled and unprofiled
+runs; sampling changes the workload. Review recordings before sharing: disabling
+the listed metadata events is not a guarantee that every diagnostic is free of
+sensitive information. No whole-service JFR finding is published yet.
 
-Publish:
+## Component overhead only
 
-- HTTP acknowledgement p50/p95/p99, latency from scheduled send, and status counts.
-- Time from scheduled send to PostgreSQL visibility, plus source consumer lag.
-- Exact accepted-ID versus stored-ID reconciliation, duplicates and quarantined IDs.
-- Broker ISR/leader state, producer errors, queue occupancy and database pool wait.
-- JVM CPU, heap, GC pauses and an exported JFR profile.
-- Source revision, image digests, CPU/memory limits, disks, payload size,
-  tenant distribution, concurrency, warmup and experiment duration.
-
-Separate the one-broker developer setup from a replicated cluster experiment.
-An acceptance SLI counts confirmed broker responses; a persistence SLI measures
-eventual storage. Set numerical SLOs only after a workload and fault model are
-agreed and measured.
+`./scripts/benchmark-core.sh 8 50000` uses eight closed-loop clients and an
+immediate-completion log double. Each client warms up for 10,000 operations, then
+collects 50,000 samples. It excludes HTTP, JWT verification, Avro, filesystem sync,
+Kafka and PostgreSQL. The script reports revision, dirty state, JVM settings,
+processor count, outcomes and lease reconciliation. `PROFILE=1` adds a component
+recording with sensitive metadata categories disabled. These results cannot be
+presented as durable pipeline capacity; the closed-loop workload has coordinated
+omission and does not preserve a fixed offered rate during stalls.

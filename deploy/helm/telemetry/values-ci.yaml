@@ -1,0 +1,13 @@
+production: false
+image: real-time-telemetry-data-platform:ci
+collector: {replicas: 1, storageClass: standard, volumeSize: 1Gi}
+worker: {replicas: 1}
+resources:
+  requests: {cpu: 100m, memory: 256Mi}
+  limits: {cpu: '1', memory: 768Mi}
+runtime:
+  kafkaBootstrapServers: kafka:9092
+  schemaRegistryUrl: http://registry:8081
+  issuer: http://localhost:8080
+  kafkaSecurityProtocol: PLAINTEXT
+networkPolicy: {enabled: false}

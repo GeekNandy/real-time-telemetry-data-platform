@@ -1,108 +1,96 @@
-# Architecture and delivery decisions
+# Design and fault model
 
-## Scope
+## Boundaries
 
-This prototype addresses a narrow problem: accept versioned telemetry into a
-broker, persist it across retries, and explain what a client can conclude from
-each response. It does not attempt stream analytics, a general schema registry,
-a query warehouse or a multi-region control plane.
+The collector accepts an event after durable local append. The dispatcher
+publishes in volume order, waits for Kafka's configured acknowledgement policy,
+and only then persists a delivered checkpoint and reclaims the spool entry.
+The worker commits a source offset after a PostgreSQL transaction, or after
+confirmed dead-letter publication for a non-retryable record.
 
-```mermaid
-flowchart TD
-    A["Authenticated HTTP request"] --> B["Bounded admission"]
-    B --> C["Kafka append"]
-    C -->|Broker acknowledgement| R["202 response"]
-    C --> D["Persistence consumer"]
-    D --> E["PostgreSQL transaction"]
-    E --> F["Source offset commit"]
-    D -->|Poison or ID collision| Q["Confirmed dead-letter append"]
-    Q --> F
-```
+These boundaries are independently recoverable. No transaction spans the
+collector filesystem, Kafka and PostgreSQL.
 
-## Decision 1: acknowledge the broker, then persist
+## Durable buffer
 
-Holding the HTTP request open for database persistence couples intake availability
-to database availability. Returning before the broker acknowledgement can claim
-acceptance for a record that never entered the log. This implementation chooses
-the broker acknowledgement as its boundary.
+Each private volume has one process owner enforced by a file lock. An append
+writes a bounded frame to a temporary file, synchronizes the file, atomically
+renames it and synchronizes the directory before returning acceptance.
 
-The producer uses `acks=all` and Kafka producer idempotence. These do not provide
-application-level exactly-once delivery: producer restarts and client retries can
-still generate duplicate records. Replication factor, minimum ISR, unclean leader
-election and the storage fault model determine what an acknowledgement survives.
+Frames and delivered checkpoints are checksummed. Recovery validates committed
+entries, removes incomplete temporary files, and fails closed on corrupted
+acknowledged data. It never silently discards a corrupt committed record.
 
-The demo explicitly uses replication factor 1 and minimum ISR 1. The replicated
-configuration requests factor 3 and minimum ISR 2, with unclean leader election
-disabled; a three-broker cluster and failure tests remain prerequisites.
+A delivered checkpoint advances only in order and is synchronized before record
+reclamation. A crash between Kafka acknowledgement and checkpointing can replay
+the record. A crash after checkpointing but before reclamation can leave a stale
+file, which recovery safely removes.
 
-## Decision 2: a database key and canonical fingerprint
+The file-per-record design favors a small, auditable durability protocol over
+maximum write throughput. Fsync, directory updates and per-record files are
+known costs that must be measured. Pending record count and total encoded bytes
+are bounded. File metadata is cached so readiness and metric reads perform no
+disk I/O.
 
-The database primary key is `(tenant_id, event_id)`. `INSERT ... ON CONFLICT DO
-NOTHING` runs inside a transaction. A duplicate key triggers comparison with a
-SHA-256 fingerprint of the original logical payload.
+## Explicit failure assumptions
 
-The canonical encoding uses length-prefixed UTF-8 fields and sorted attribute
-keys, so JSON object ordering does not cause a false collision. The event's
-timestamp retains its original precision in that fingerprint even though
-PostgreSQL timestamps have microsecond precision.
+| Failure | Intended behavior |
+| --- | --- |
+| HTTP response is lost after durable append | Client retries the same ID; downstream storage deduplicates |
+| Collector process is killed | Retained volume is scanned and pending entries replay |
+| Kafka is unavailable | Collector continues until its disk budget is exhausted, then rejects new events |
+| PostgreSQL is unavailable | Kafka offsets remain uncommitted; the worker retries |
+| Worker commits the database and dies before offset commit | Redelivery finds the same fingerprint and produces no second row |
+| DLT publication fails | Recovery must fail and the source offset remain uncommitted |
+| Committed spool/checkpoint is corrupted | Fail closed and retain the data for investigation |
+| Collector volume is permanently lost before Kafka acknowledgement | Accepted data can be lost; this implementation has no collector-volume replication |
+| Outage exceeds Kafka retention | Unprocessed records can expire; capacity and retention need an operational budget |
 
-An identical retry succeeds as a duplicate. A different payload for the same
-key raises a collision and goes to the dead-letter topic. The first database
-writer wins; no client-side version update or HTTP `409` is implied.
+An encrypted, persistent EBS-backed PVC can protect against ordinary pod/node
+replacement within its storage fault domain. It does not establish multi-region
+or availability-zone fault tolerance. That is not claimed by the demo.
 
-A crash after database commit and before source-offset commit produces replay.
-The same insert-and-compare transaction makes that replay safe. There is no
-distributed transaction across PostgreSQL and Kafka.
+## Ordering and idempotency
 
-## Decision 3: bound admitted sends
+The key is `tenant_id:event_id`. Repeats of one event share a Kafka partition.
+There is no total ordering across a tenant or a session.
 
-One short synchronized critical section acquires both global and per-tenant
-capacity. Tenant entries exist only while they hold a lease, so the tracking map
-cannot grow with historical tenant count. A fixed worker pool isolates Kafka
-send initiation, which can block on metadata or producer buffer availability,
-from the Netty event loop.
+PostgreSQL uses `(tenant_id,event_id)` as its primary key. In one transaction,
+`INSERT ... ON CONFLICT DO NOTHING` either inserts or compares a canonical
+SHA-256 fingerprint. The first payload wins; a different payload for that ID
+is quarantined asynchronously. HTTP acceptance does not promise an HTTP 409
+for a collision detected later.
 
-A lease remains held until the actual broker completion, including after an HTTP
-subscriber cancels. Clients cannot cancel the internal result future through
-the public completion stage. Drain stops new admission and waits for admitted
-operations; reaching the shutdown deadline does not manufacture acknowledgements.
+The fingerprint includes sorted attributes and a length-prefixed encoding.
+It preserves timestamp precision even though PostgreSQL stores microseconds.
+Deduplication is bounded by retention of the stored identity/fingerprint.
 
-This bounds admitted operations, not HTTP connection count, parsing allocations,
-fleet-wide load or a tenant's requests per second. The per-tenant cap is an
-occupancy limit, not a fairness scheduler or rate limiter. An API gateway and
-fleet admission policy would be separate decisions.
+## Admission and the Java Memory Model
 
-The worker queue has finite size but no independent queue-age deadline.
-With unavailable broker metadata, the default capacities and `max.block.ms`
-can lead to substantial queue wait. Queue-age cancellation before send,
-instrumentation and overload latency testing are explicit follow-up work.
+One monitor atomically updates global and tenant occupancy. Only active tenants
+are retained. A bounded executor isolates filesystem work from the event loop;
+queued work has a start deadline. Cancellation of the HTTP subscriber cannot
+cancel a real append or release its permit prematurely.
 
-## Decision 4: retry dependency outages, quarantine poison
+Immutable records and copied maps cross the executor boundary. Monitor release/
+acquisition, executor queue publication, atomic settlement and future completion
+provide the required visibility. Completion callbacks run outside the admission
+monitor. Counter snapshots are operational observations, not an atomic audit ledger.
 
-A persistence failure leaves the source offset uncommitted and retries. This
-preserves work during a recoverable database outage at the cost of blocking that
-partition. A malformed envelope or payload collision is non-retryable: publish
-the original record to the corresponding dead-letter partition, wait for broker
-confirmation, then commit the source offset. If dead-letter publication fails,
-recovery fails and the source offset must remain uncommitted.
+The per-tenant limit bounds simultaneous appends; it is not a requests-per-second
+limiter or a reservation of persistent backlog space. Gateway rate limits and
+tenant backlog quotas are separate controls.
 
-The dead-letter topic has the same partition count as the source. A separate
-operational replay policy is required. Blindly republishing collisions would
-repeat the same failure.
+## Schema lifecycle and shared libraries
 
-## Event contract
+Avro v2 adds an optional collector-source field with a default, preserving both
+reader directions. Production clients look up bundled schemas; registration
+belongs to a controlled deployment step. The registry cache is bounded and
+writers preload their IDs. A cold restart depends on the registry being
+available. A registry outage must be treated as retryable infrastructure failure,
+not as evidence that a source record should be quarantined.
 
-Timestamps are restricted to UTC years 0001 through 9999. Attribute values are
-limited to 128 UTF-16 code units and must contain valid Unicode scalar values
-without U+0000. These checks avoid accepting payloads that PostgreSQL JSONB or
-the JDBC timestamp conversion cannot represent.
-
-## Ordering and retention
-
-The Kafka key is `tenant_id:event_id`: retries of one ID share a partition.
-There is no total ordering across a tenant, session or cluster.
-
-Source and dead-letter retention use Kafka broker defaults in the demo. During
-an outage longer than retention, unprocessed events can expire. PostgreSQL event
-retention, partition lifecycle and deletion workflows are not implemented.
-Production claims require an explicit backlog/retention budget and storage plan.
+Shared configuration validates resource relationships and production transport
+policy. Shared observability propagates W3C trace context across HTTP, disk,
+Kafka and the worker. Baggage, authorization headers, payloads and tenant/event
+metric labels are excluded.

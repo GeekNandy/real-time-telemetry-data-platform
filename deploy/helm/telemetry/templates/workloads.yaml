@@ -1,0 +1,134 @@
+{{- include "telemetry.validate" . -}}
+{{- $root := . -}}
+{{- $name := include "telemetry.name" . -}}
+{{- range $role := list "collector" "worker" }}
+---
+apiVersion: apps/v1
+kind: {{ if eq $role "collector" }}StatefulSet{{ else }}Deployment{{ end }}
+metadata:
+  name: {{ $name }}-{{ $role }}
+spec:
+  replicas: {{ (index $root.Values $role).replicas }}
+  {{- if eq $role "collector" }}
+  serviceName: {{ $name }}-collector-headless
+  persistentVolumeClaimRetentionPolicy: {whenDeleted: Retain, whenScaled: Retain}
+  {{- else }}
+  strategy:
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  {{- end }}
+  selector:
+    matchLabels: {app.kubernetes.io/instance: {{ $root.Release.Name }}, app.kubernetes.io/component: {{ $role }}}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/instance: {{ $root.Release.Name }}, app.kubernetes.io/name: telemetry, app.kubernetes.io/component: {{ $role }}}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: {type: RuntimeDefault}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: {{ if $root.Values.production }}DoNotSchedule{{ else }}ScheduleAnyway{{ end }}
+          labelSelector:
+            matchLabels: {app.kubernetes.io/instance: {{ $root.Release.Name }}, app.kubernetes.io/component: {{ $role }}}
+      containers:
+        - name: {{ $role }}
+          image: {{ $root.Values.image | quote }}
+          imagePullPolicy: {{ $root.Values.imagePullPolicy }}
+          ports: [{name: http, containerPort: 8080}]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources: {{ toYaml $root.Values.resources | nindent 12 }}
+          env:
+            - {name: SPRING_PROFILES_ACTIVE, value: "{{ $role }}{{ if $root.Values.production }},production,replicated{{ end }}"}
+            - {name: SERVER_ADDRESS, value: "0.0.0.0"}
+            - {name: SERVER_PORT, value: "8080"}
+            - {name: JAVA_TOOL_OPTIONS, value: "-XX:MaxRAMPercentage=65 -XX:ActiveProcessorCount=1"}
+            - {name: KAFKA_BOOTSTRAP_SERVERS, value: {{ $root.Values.runtime.kafkaBootstrapServers | quote }}}
+            - {name: SCHEMA_REGISTRY_URL, value: {{ $root.Values.runtime.schemaRegistryUrl | quote }}}
+            - {name: JWT_ISSUER, value: {{ $root.Values.runtime.issuer | quote }}}
+            - {name: JWT_AUDIENCE, value: {{ $root.Values.runtime.audience | quote }}}
+            - {name: KAFKA_SECURITY_PROTOCOL, value: {{ $root.Values.runtime.kafkaSecurityProtocol | quote }}}
+            - {name: KAFKA_SASL_MECHANISM, value: {{ $root.Values.runtime.kafkaSaslMechanism | quote }}}
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ $root.Values.runtime.otlpEndpoint | quote }}}
+            {{- if $root.Values.production }}
+            - name: KAFKA_SASL_JAAS_CONFIG
+              valueFrom: {secretKeyRef: {name: {{ $root.Values.existingSecret }}, key: kafka-jaas}}
+            - name: SCHEMA_REGISTRY_AUTHORIZATION
+              valueFrom: {secretKeyRef: {name: {{ $root.Values.existingSecret }}, key: registry-authorization}}
+            {{- else }}
+            - {name: JWT_MODE, value: demo}
+            - {name: SCHEMA_REGISTRATION_ALLOWED, value: "true"}
+            - name: DEMO_JWT_SECRET
+              valueFrom: {secretKeyRef: {name: {{ $root.Values.existingSecret }}, key: demo-jwt-secret}}
+            {{- end }}
+            {{- if eq $role "worker" }}
+            - name: DATABASE_URL
+              valueFrom: {secretKeyRef: {name: {{ $root.Values.existingSecret }}, key: database-url}}
+            - name: DATABASE_USER
+              valueFrom: {secretKeyRef: {name: {{ $root.Values.existingSecret }}, key: database-user}}
+            - name: DATABASE_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ $root.Values.existingSecret }}, key: database-password}}
+            {{- else }}
+            - {name: BUFFER_PATH, value: /app/data/wal}
+            {{- end }}
+          startupProbe:
+            httpGet: {path: /actuator/health/liveness, port: http}
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            httpGet: {path: /actuator/health/readiness, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /actuator/health/liveness, port: http}
+            periodSeconds: 10
+            failureThreshold: 3
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            {{- if eq $role "collector" }}
+            - {name: wal, mountPath: /app/data/wal}
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {sizeLimit: 64Mi}
+  {{- if eq $role "collector" }}
+  volumeClaimTemplates:
+    - metadata: {name: wal}
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: {{ $root.Values.collector.storageClass | quote }}
+        resources:
+          requests: {storage: {{ $root.Values.collector.volumeSize }}}
+  {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: {{ $name }}-{{ $role }}}
+spec:
+  selector: {app.kubernetes.io/instance: {{ $root.Release.Name }}, app.kubernetes.io/component: {{ $role }}}
+  ports: [{name: http, port: 8080, targetPort: http}]
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: {{ $name }}-{{ $role }}}
+spec:
+  minAvailable: {{ if $root.Values.production }}1{{ else }}0{{ end }}
+  selector:
+    matchLabels: {app.kubernetes.io/instance: {{ $root.Release.Name }}, app.kubernetes.io/component: {{ $role }}}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: {{ $name }}-collector-headless}
+spec:
+  clusterIP: None
+  selector: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: collector}
+  ports: [{name: http, port: 8080, targetPort: http}]

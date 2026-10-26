@@ -1,0 +1,7 @@
+apiVersion: v2
+name: telemetry
+version: 0.1.0
+appVersion: 0.1.0
+kubeVersion: '>=1.32.0-0'
+description: Independently scaled collectors with retained volumes and stateless persistence workers
+type: application
