@@ -52,6 +52,17 @@ public class ApiErrors {
         true);
   }
 
+  @ExceptionHandler({
+    org.springframework.dao.DataAccessException.class,
+    java.util.concurrent.RejectedExecutionException.class
+  })
+  ResponseEntity<ProblemDetail> queryUnavailable() {
+    return problem(
+        HttpStatus.SERVICE_UNAVAILABLE,
+        "Query capacity or storage is temporarily unavailable.",
+        true);
+  }
+
   private static ResponseEntity<ProblemDetail> problem(
       HttpStatus status, String detail, boolean retry) {
     var builder = ResponseEntity.status(status);

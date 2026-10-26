@@ -1,0 +1,10 @@
+server:
+  port: ${SERVER_PORT:8082}
+telemetry:
+  component: worker
+management:
+  endpoint:
+    health:
+      group:
+        readiness:
+          include: readinessState,db

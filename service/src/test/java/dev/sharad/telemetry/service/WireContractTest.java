@@ -3,17 +3,26 @@ package dev.sharad.telemetry.service;
 import static org.junit.jupiter.api.Assertions.*;
 
 import dev.sharad.telemetry.core.Event;
+import dev.sharad.telemetry.core.EventSink;
+import dev.sharad.telemetry.observability.PlatformTelemetry;
+import dev.sharad.telemetry.schema.AvroEventCodec;
+import dev.sharad.telemetry.schema.SchemaCatalog;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.opentelemetry.api.OpenTelemetry;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
+import org.apache.avro.Schema;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.Test;
+import org.springframework.kafka.support.Acknowledgment;
 import tools.jackson.databind.json.JsonMapper;
 
 class WireContractTest {
   private final JsonMapper mapper = new RuntimeConfiguration().jsonMapper();
 
   @Test
-  void roundTripsTheEventJsonValues() {
+  void roundTripsTheDatabaseJsonValues() {
     var event =
         new Event(
             UUID.randomUUID(),
@@ -34,5 +43,41 @@ class WireContractTest {
          "occurredAt":"2026-01-01T00:00:00Z","attributes":{},"tenantId":"tenant-b"}
         """;
     assertThrows(RuntimeException.class, () -> mapper.readValue(json, EventRequest.class));
+  }
+
+  @Test
+  void quarantinesInvalidBrokerPayloadBeforeTouchingStorage() {
+    EventSink sink =
+        event -> {
+          throw new AssertionError("Invalid data reached persistence");
+        };
+    Acknowledgment ack =
+        () -> {
+          throw new AssertionError("Invalid data committed its offset");
+        };
+    var catalog =
+        new SchemaCatalog() {
+          public int registerOrLookup(String subject, Schema schema) {
+            return 1;
+          }
+
+          public Schema byId(int id) {
+            return dev.sharad.telemetry.schema.EventSchemas.v2();
+          }
+        };
+    var meters = new SimpleMeterRegistry();
+    try {
+      var consumer =
+          new PersistenceConsumer(
+              sink,
+              new AvroEventCodec(catalog),
+              new PlatformTelemetry(OpenTelemetry.noop(), meters));
+      for (byte[] payload : new byte[][] {null, new byte[0], new byte[] {1, 2, 3}})
+        assertThrows(
+            PersistenceConsumer.PoisonRecord.class,
+            () -> consumer.consume(new ConsumerRecord<>("events", 0, 0, "invalid", payload), ack));
+    } finally {
+      meters.close();
+    }
   }
 }
