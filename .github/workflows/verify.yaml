@@ -9,6 +9,26 @@ concurrency:
   group: verify-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  console-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Install locked browser test dependencies
+        run: |
+          npm ci --prefix console --ignore-scripts --no-fund --no-audit
+          ./console/node_modules/.bin/playwright install --with-deps chromium
+      - name: Test client resource, identity and schema contracts
+        run: npm --prefix console test
+      - name: Test actual browser workflows against explicit synthetic fixtures
+        run: npm --prefix console run test:browser
+      - name: Collect browser reports and fixture screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: console-browser
+          path: data/console-browser/
+          if-no-files-found: warn
   contracts-and-integration:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -71,13 +91,17 @@ jobs:
   kubernetes-smoke:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    needs: [contracts-and-integration, deployment-contracts]
+    needs: [contracts-and-integration, deployment-contracts, console-contracts]
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Install checksum-verified Kubernetes tools
         run: |
           python3 scripts/install-tools.py --directory "$RUNNER_TEMP/telemetry-tools" helm kind
           echo "$RUNNER_TEMP/telemetry-tools" >> "$GITHUB_PATH"
+      - name: Install locked browser test dependencies
+        run: |
+          npm ci --prefix console --ignore-scripts --no-fund --no-audit
+          ./console/node_modules/.bin/playwright install --with-deps chromium
       - name: Verify the isolated Compose runtime
         run: ./scripts/compose-smoke.sh
       - name: Build, deploy, reconcile HTTP202 IDs and roll collector

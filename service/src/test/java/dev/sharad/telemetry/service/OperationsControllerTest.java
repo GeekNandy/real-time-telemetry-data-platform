@@ -1,0 +1,128 @@
+package dev.sharad.telemetry.service;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+
+import io.micrometer.core.instrument.FunctionCounter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.util.concurrent.atomic.AtomicLong;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.test.web.reactive.server.WebTestClient;
+
+@WebFluxTest(
+    controllers = OperationsController.class,
+    properties = {
+      "telemetry.component=collector",
+      "telemetry.security.mode=demo",
+      "telemetry.security.issuer=https://issuer.test",
+      "telemetry.security.demo-secret=test-only-key-with-at-least-thirty-two-bytes"
+    })
+@Import({SecurityConfiguration.class, OperationsControllerTest.Meters.class})
+class OperationsControllerTest {
+  @Autowired WebTestClient client;
+  @Autowired MeterRegistry meters;
+
+  @TestConfiguration
+  static class Meters {
+    @Bean
+    MeterRegistry meters() {
+      return new SimpleMeterRegistry();
+    }
+  }
+
+  @BeforeEach
+  void clearMeters() {
+    meters.clear();
+  }
+
+  @Test
+  void requiresAnAuthenticatedObserver() {
+    client.get().uri("/v1/operations/metrics").exchange().expectStatus().isUnauthorized();
+  }
+
+  @Test
+  void eventReadAndWriteScopesDoNotGrantGlobalMetrics() throws Exception {
+    client
+        .get()
+        .uri("/v1/operations/metrics")
+        .headers(headers -> headers.setBearerAuth(TestTokens.tenant("tenant-a")))
+        .exchange()
+        .expectStatus()
+        .isForbidden();
+  }
+
+  @Test
+  void exposesOnlyFixedAggregateMetricsToAnObserver() throws Exception {
+    var count = new AtomicLong(8);
+    FunctionCounter.builder("telemetry.ingestion.accepted", count, AtomicLong::doubleValue)
+        .register(meters);
+    meters.gauge("telemetry.buffer.records", 3);
+    meters.gauge("telemetry.buffer.bytes", 1024);
+    meters.gauge("telemetry.buffer.oldest.age", 2.5);
+    meters.counter("tenant-secret", "event-id", "private-event").increment();
+    observe()
+        .exchange()
+        .expectStatus()
+        .isOk()
+        .expectHeader()
+        .valueEquals("Cache-Control", "no-store")
+        .expectBody()
+        .jsonPath("$.component")
+        .isEqualTo("collector")
+        .jsonPath("$.acceptedTotal")
+        .isEqualTo(8.0)
+        .jsonPath("$.bufferRecords")
+        .isEqualTo(3.0)
+        .jsonPath("$.bufferBytes")
+        .isEqualTo(1024.0)
+        .jsonPath("$.oldestBufferedAgeSeconds")
+        .isEqualTo(2.5)
+        .jsonPath("$.instanceId")
+        .isNotEmpty()
+        .consumeWith(
+            result -> {
+              String json =
+                  new String(result.getResponseBody(), java.nio.charset.StandardCharsets.UTF_8);
+              assertFalse(json.contains("tenant-secret"));
+              assertFalse(json.contains("private-event"));
+            });
+  }
+
+  @Test
+  void absentMetricsAreUnknownRatherThanInventedZeros() throws Exception {
+    observe()
+        .exchange()
+        .expectStatus()
+        .isOk()
+        .expectBody()
+        .jsonPath("$.acceptedTotal")
+        .isEmpty()
+        .jsonPath("$.bufferRecords")
+        .isEmpty()
+        .jsonPath("$.stages.persistence.completed")
+        .isEmpty();
+  }
+
+  @Test
+  void nonfiniteGaugeValuesRemainUnknown() throws Exception {
+    meters.gauge("telemetry.buffer.records", Double.NaN);
+    observe().exchange().expectStatus().isOk().expectBody().jsonPath("$.bufferRecords").isEmpty();
+  }
+
+  private WebTestClient.RequestHeadersSpec<?> observe() throws Exception {
+    String token =
+        TestTokens.sign(
+            TestTokens.claims("tenant-a").claim("scope", "telemetry.observe").build(),
+            TestTokens.SECRET);
+    return client
+        .get()
+        .uri("/v1/operations/metrics")
+        .headers(headers -> headers.setBearerAuth(token));
+  }
+}

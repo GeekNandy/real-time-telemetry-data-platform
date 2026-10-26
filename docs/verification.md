@@ -42,3 +42,20 @@ controller-quorum/AZ HA, restore result or independent human approval is claimed
 
 Historical evidence from PR #2 remains under evidence with its original source
 revisions and observation dates. It is not evidence that a later revision passed.
+
+## Operator console extension
+
+The completed foundation's eighth PR is
+[#11](https://github.com/GeekNandy/real-time-telemetry-data-platform/pull/11),
+with [passing run 40362033941](https://github.com/GeekNandy/real-time-telemetry-data-platform/actions/runs/40362033941).
+That run establishes the 86-case foundation result described above.
+
+The operator-console change adds five Java HTTP/metrics contracts, bringing the
+complete Java suite to 91 cases, plus eight Node client contracts and eight
+Chromium fixture workflows. Its Compose smoke also performs a real browser
+submission and matching PostgreSQL-backed lookup, verifies the fixed proxy
+allowlist and observer authorization, and checks automatic Grafana provisioning
+and both authenticated Prometheus scrapes. Existing twenty-event Compose and
+kind checks remain required. See [the console guide](console.md) for exact scope.
+The console PR's workflow and artifacts provide its own execution status;
+fixture screenshots are not deployment or capacity evidence.

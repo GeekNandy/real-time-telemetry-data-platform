@@ -23,3 +23,9 @@ A new repository cannot manufacture those qualifications.
 
 The current execution status for every gate is in [verification.md](verification.md).
 Only observed outcomes may be marked passed.
+
+The [operator console](console.md) exposes these backend capabilities through
+live observer snapshots, schema-shaped synthetic submission, separate acceptance
+and query-visibility milestones, tenant-scoped inspection and trace links. Its
+browser contracts and actual Compose journey provide additional API integration
+evidence. A visual dashboard does not establish throughput or production tenure.

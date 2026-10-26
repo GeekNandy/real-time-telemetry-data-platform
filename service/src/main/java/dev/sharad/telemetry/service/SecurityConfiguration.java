@@ -38,6 +38,8 @@ public class SecurityConfiguration {
                     .hasAuthority("SCOPE_telemetry.read")
                     .pathMatchers("/actuator/prometheus")
                     .hasAuthority("SCOPE_telemetry.observe")
+                    .pathMatchers(HttpMethod.GET, "/v1/operations/metrics")
+                    .hasAuthority("SCOPE_telemetry.observe")
                     .anyExchange()
                     .denyAll())
         .oauth2ResourceServer(resource -> resource.jwt(Customizer.withDefaults()))

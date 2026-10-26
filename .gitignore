@@ -13,3 +13,4 @@ data/
 *.tfplan
 *.tfvars
 crash.log
+**/node_modules/
