@@ -1,0 +1,43 @@
+{
+  "observed_date": "2026-10-26",
+  "source_head": "595c4eadcc8fc4de9de9df676cf96487d1cc1046",
+  "execution_revision": "7187e9737df7a407a97ac19864f06dfc48584d2c",
+  "source_tree": "762fe7d8527975fb1e534abfa048562e8d38a5af",
+  "workflow_run_id": 40307951191,
+  "workflow_url": "https://github.com/GeekNandy/real-time-telemetry-data-platform/actions/runs/40307951191",
+  "jobs": {
+    "contracts-and-integration": {
+      "job_id": 121521649748,
+      "conclusion": "success",
+      "unit_contract_tests": 66,
+      "integration_tests": 13
+    },
+    "deployment-contracts": {
+      "job_id": 121521650169,
+      "conclusion": "success",
+      "production_chart_cases": 10,
+      "terraform_mock_runs": 2
+    },
+    "kubernetes-smoke": {
+      "job_id": 121522915564,
+      "conclusion": "success",
+      "scheduled_requests": 20,
+      "http_outcomes": {
+        "202": 20
+      },
+      "accepted_reconciliation": {
+        "accepted": 20,
+        "passed": true,
+        "unresolved_ids": [],
+        "visible": 20
+      },
+      "wal_permissions": "10001:10001 700",
+      "collector_restart_ready": true
+    }
+  },
+  "artifact": {
+    "id": 12643399408,
+    "sha256": "6c0d80197f8cf11366a4162d8e8379175959062c09919bbe6ce52001e045bead"
+  },
+  "scope": "Short synthetic correctness smoke in kind on a GitHub-hosted runner. Not a capacity measurement, production deployment, AWS deployment or HA certification."
+}

@@ -61,7 +61,7 @@ value=message+'.'+base64.urlsafe_b64encode(hmac.new(Path(sys.argv[1]).read_bytes
 p=Path(sys.argv[2]);p.write_text(value);p.chmod(0o600)
 PY
 trap 'rm -f "$telemetry_reports/token"; rm -rf "$telemetry_secret_dir"; cleanup' EXIT
-python3 scripts/smoke-reconcile.py --token-file "$telemetry_reports/token" --output "$telemetry_reports/http-contract"
+python3 scripts/load.py --rate 5 --duration 4 --token-file "$telemetry_reports/token" --output "$telemetry_reports/http-contract"
 python3 - "$telemetry_reports/http-contract/summary.json" <<'PY_SMOKE'
 import json,sys
 from pathlib import Path
