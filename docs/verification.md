@@ -1,25 +1,30 @@
 # Verification evidence
 
-Observed 25 October 2026. Exact tested source and suite counts are in
-[`evidence/verification.json`](../evidence/verification.json). The implementation is a review candidate with explicit
-pending deployment checks, not a production-readiness certification.
+Local JVM and schema results were first observed on 25 October 2026. On
+26 October, all three GitHub CI jobs passed against the published implementation.
+The exact source, execution revision, job IDs and outcomes are recorded in
+[`evidence/ci-2026-10-26.json`](../evidence/ci-2026-10-26.json). The original local
+record remains in [`evidence/verification.json`](../evidence/verification.json).
 
 | Layer | Observed outcome |
 | --- | --- |
-| Java build | Full six-module Maven build passed on Temurin 21.0.13+9, Maven 3.9.12 |
+| Java build | Full six-module Maven integration build passed on GitHub CI |
 | Unit/contracts | 66 passed, zero failures/errors/skips: core 27, config 8, buffer 12, observability 1, schemas 5, service 13 |
-| Core compiler | 27 shared contract cases passed with Java 17 release target, all compiler warnings treated as errors |
-| Packaged HTTP collector | Real Kafka/registry/volume test passed: JWT/scope/body validation, trace propagation, bounded buffering, JVM SIGKILL and accepted-ID replay |
-| Kafka replication | Real three-broker test passed: leader failure, new leader, ISR loss and rejection below minISR 2; one controller, no controller-HA claim |
-| Schema Registry | Separate Confluent 8.2 JVM test passed: compatible v1/v2 registration, breaking change rejected, registry kill/restart and stable schema IDs |
-| Helm | Development chart lint/render passed; ten production guardrail cases passed |
-| Kubernetes schema | 14 development/dependency/storage resources and eight production-rendered resources validated, zero errors/skips |
-| Formatting/scripts | Google Java Format 1.28.0 check, Python compilation and shell syntax passed |
-| AWS source | Terraform formatting passed; provider process failed to launch, so validation and two mocked policy runs remain unverified |
-| PostgreSQL integration | Ten-container-backed test cases compile; execution pending because Docker is unavailable |
-| Container and kind | Build, Compose runtime and Kubernetes smoke checks are written in CI but have not run |
-| End-to-end load/JFR | Bounded harness and profiling protocol provided; no measured pipeline capacity or whole-service profiling result |
-| Review/publication | README-only main and feature source are published; [draft PR #2](https://github.com/GeekNandy/real-time-telemetry-data-platform/pull/2) is open. CI and independent review remain pending |
+| Core compiler | 27 shared cases passed with Java 17 release target and compiler warnings treated as errors |
+| Native integrations | Three passed: packaged HTTP collector buffering/SIGKILL/replay, broker leader/ISR failure, and registry compatibility/restart |
+| PostgreSQL integration | All ten Docker-backed cases passed: exact ID reconciliation, tenant retrieval, duplicates, commit gap, collision/DLT, poison, database outage, retention, Kafka outage and drain |
+| Helm/Kubernetes schema | Chart lint, ten production guardrail cases, and development/production resource schema validation passed |
+| AWS source | Terraform formatting, provider validation and two mocked policy runs passed on GitHub CI; no AWS resources were created |
+| Container/kind | Application image built; collector/worker became ready; private spool permissions were `10001:10001 700`; all 20 offered requests returned HTTP 202 and became queryable; collector restart completed |
+| Compose | Configuration validation passed; the full Compose runtime demonstration has not been separately executed |
+| Formatting/scripts | Java formatting, Python compilation and shell syntax passed |
+| Capacity/JFR | No measured pipeline capacity or whole-service profiling result is claimed |
+| Review/publication | Main contains only README.md; the implementation is published in [draft PR #2](https://github.com/GeekNandy/real-time-telemetry-data-platform/pull/2), which remains unmerged and awaits independent review |
+
+The kind workload is a twenty-request correctness smoke, not a performance
+benchmark. Raw synthetic request outcomes are preserved in
+[`evidence/ci-smoke-2026-10-26-requests.jsonl`](../evidence/ci-smoke-2026-10-26-requests.jsonl).
+The source and PR merge execution revisions have identical Git trees.
 
 ## Published source
 
@@ -64,21 +69,20 @@ terraform -chdir=infra/aws fmt -check
 ```
 
 Schema validation proves API structure, not scheduling, network-policy enforcement,
-volume semantics or a successful rollout. The AWS provider archive matched the
-publisher checksum and extracted package hash; the verified process still failed
-to start in this environment. No checksum check was disabled, no mock test was
-reported as passing and no AWS resource was created.
+volume semantics or a successful rollout. The original authoring environment could not launch the publisher-verified AWS
+provider. GitHub CI subsequently validated the configuration and passed both
+mocked policy runs. No checksum check was disabled and no AWS resource was created.
 
-## Remaining integration gates
+## Remaining validation gates
 
-The Docker suite covers full HTTP-to-PostgreSQL persistence, accepted-ID set
-reconciliation, duplicate/collision handling, an injected DB-commit/offset-commit
-gap, real poison/DLT inspection, database pause with source-offset verification,
-retention, broker pause with buffer saturation/recovery and intake drain.
-It must pass on a Docker-capable runner before claiming these outcomes.
+The Docker and kind correctness gates have passed. The remaining work is an
+independent review, a separate Compose runtime demonstration if that path is to
+be advertised, and a properly controlled end-to-end load/profiling experiment
+before making capacity claims. A real AWS deployment, HA exercise and restore
+exercise are not established by Terraform mocks or a single-node kind cluster.
 
-Run `./mvnw -Pintegration verify`, then the CI deployment checks and
-`./scripts/kind-smoke.sh`. CI also resolves the separate registry runtime; tests
-never silently skip when Docker is absent. The short kind load is a correctness
-smoke, not a capacity benchmark. Preserve reports on the actual feature commit
-and investigate failures before promoting this project in an application.
+Reproduce the Java integration suite with `./mvnw -Pintegration verify` after
+resolving the separate registry runtime, then run the deployment contract checks
+and `./scripts/kind-smoke.sh`. These tests do not silently skip when Docker is
+absent. Preserve reports on the actual source revision and investigate failures
+before changing the evidence record.

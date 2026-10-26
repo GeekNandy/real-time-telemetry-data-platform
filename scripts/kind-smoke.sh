@@ -62,6 +62,15 @@ p=Path(sys.argv[2]);p.write_text(value);p.chmod(0o600)
 PY
 trap 'rm -f "$telemetry_reports/token"; rm -rf "$telemetry_secret_dir"; cleanup' EXIT
 python3 scripts/load.py --token-file "$telemetry_reports/token" --rate 5 --duration 4 --output "$telemetry_reports/http-contract"
+python3 - "$telemetry_reports/http-contract/summary.json" <<'PY_SMOKE'
+import json,sys
+from pathlib import Path
+summary=json.loads(Path(sys.argv[1]).read_text())
+assert summary['scheduled']==20, summary
+assert summary['outcomes']=={'202':20}, summary['outcomes']
+assert summary['accepted_reconciliation']['passed'], summary['accepted_reconciliation']
+assert summary['accepted_reconciliation']['visible']==20, summary['accepted_reconciliation']
+PY_SMOKE
 # This is a rollout/readiness/volume-mount smoke check, not a Kubernetes capacity result.
 kubectl --context "$telemetry_context" -n "$telemetry_namespace" rollout restart statefulset/ci-telemetry-collector
 kubectl --context "$telemetry_context" -n "$telemetry_namespace" rollout status statefulset/ci-telemetry-collector --timeout=180s

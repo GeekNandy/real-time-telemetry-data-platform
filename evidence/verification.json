@@ -128,5 +128,6 @@
       "README.md"
     ],
     "provenance": "evidence/published-source.json"
-  }
+  },
+  "subsequent_ci_record": "evidence/ci-2026-10-26.json"
 }

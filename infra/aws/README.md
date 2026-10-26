@@ -6,10 +6,11 @@ enforcement through VPC CNI and an immutable ECR repository. The accompanying
 `deploy/kubernetes/storageclass-aws.yaml` provisions encrypted gp3 volumes with
 Retain reclamation. Dependency transport checks also run inside the application.
 
-This is infrastructure source, not evidence of a deployed AWS service. The AWS
-provider could not launch in the authoring environment, so validation and mocked
-policy tests remain pending on CI. Terraform formatting passed. The mock tests,
-when run, do not contact AWS and cannot prove deployability, cost or availability.
+This is infrastructure source, not evidence of a deployed AWS service. GitHub CI
+passed Terraform formatting, provider validation and both mocked policy tests.
+The authoring environment's earlier provider launch failure is retained in the
+verification history. The mocks do not contact AWS and cannot prove actual
+deployability, cost or availability.
 
 Provide an existing VPC with private subnets in different AZs, required endpoints
 or NAT, DNS, enough IP space, a private runner/VPN path to the API, supported EKS
