@@ -1,0 +1,75 @@
+server:
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+spring:
+  profiles:
+    default: collector
+  application:
+    name: real-time-telemetry-data-platform
+  lifecycle:
+    timeout-per-shutdown-phase: 15s
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        max.block.ms: 2000
+        request.timeout.ms: 2000
+        delivery.timeout.ms: 5000
+        linger.ms: 5
+        buffer.memory: 16777216
+        max.request.size: 32768
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+      max-poll-records: 50
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+telemetry:
+  component: combined
+  topic: telemetry.events.v1
+  dead-letter-topic: telemetry.events.v1.dlt
+  consumer-group: telemetry-persistence-v1
+  global-capacity: 256
+  tenant-capacity: 64
+  send-threads: 4
+  queue-deadline-ms: 2000
+  drain-deadline-ms: 10000
+  replication-factor: 1
+  min-in-sync-replicas: 1
+  buffer:
+    path: ${BUFFER_PATH:./data/wal}
+    max-bytes: ${BUFFER_MAX_BYTES:67108864}
+    max-records: ${BUFFER_MAX_RECORDS:4096}
+    max-record-bytes: 16384
+  schema:
+    url: ${SCHEMA_REGISTRY_URL:http://localhost:8081}
+    allow-registration: ${SCHEMA_REGISTRATION_ALLOWED:false}
+    authorization: ${SCHEMA_REGISTRY_AUTHORIZATION:}
+  tracing:
+    endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:}
+    sample-ratio: ${TRACING_SAMPLE_RATIO:1.0}
+  retention:
+    log-ms: ${KAFKA_RETENTION_MS:604800000}
+    database-days: ${DATABASE_RETENTION_DAYS:30}
+    sweep-ms: 60000
+  security:
+    mode: ${JWT_MODE:issuer}
+    issuer: ${JWT_ISSUER:}
+    audience: ${JWT_AUDIENCE:telemetry}
+    demo-secret: ${DEMO_JWT_SECRET:}

@@ -21,6 +21,8 @@
     <module>platform-config</module>
     <module>durable-buffer</module>
     <module>event-schemas</module>
+    <module>platform-observability</module>
+    <module>service</module>
   </modules>
   <dependencyManagement>
     <dependencies>
