@@ -45,11 +45,16 @@ try {
   assert.equal(stored.eventId, event.eventId);
   assert.equal(stored.attributes.platform, 'operator-console');
   await page.getByRole('link', { name: /Overview/ }).click();
+  await page.waitForFunction(() => scrollY === 0);
   await page.waitForFunction(() => document.getElementById('buffer-records').textContent !== '—');
   await page.locator('#refresh').click();
   await page.waitForFunction(() => document.getElementById('accepted-rate').textContent !== '—');
   await saveScreenshot(page, 'live-overview.png');
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForFunction(() => {
+    const host = document.getElementById('chart'), svg = host.querySelector('svg');
+    return svg && svg.viewBox.baseVal.width === host.clientWidth;
+  });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await saveScreenshot(page, 'live-mobile.png');
   await assertNoStoredCredentials(page); assert.deepEqual(errors, []);

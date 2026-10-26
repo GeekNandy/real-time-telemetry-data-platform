@@ -1,6 +1,11 @@
 import { ApiError, UUID, acceptedRate, format, isNumber, matchingEvent, request, syntheticEvent, validateEvent } from './model.js';
 
 const $ = id => document.getElementById(id);
+document.querySelector('.skip').addEventListener('click', event => {
+  event.preventDefault();
+  $('main').focus({ preventScroll: true });
+  window.scrollTo(0, 0);
+});
 let accessToken = '', observeToken = '', session = new AbortController(), generation = 0;
 let refreshTimer, refreshing = false, previous = null, samples = [], currentEvent = null, currentTrace = null;
 let submitting = false, checking = false, lookupGeneration = 0;
@@ -29,9 +34,12 @@ function switchView() {
     else link.removeAttribute('aria-current');
   }
   clearTimeout(refreshTimer);
-  if (selected === 'overview') refresh();
+  window.scrollTo(0, 0);
+  requestAnimationFrame(() => window.scrollTo(0, 0));
+  if (selected === 'overview') { drawChart(); refresh(); }
 }
 window.addEventListener('hashchange', switchView);
+window.addEventListener('resize', () => { if (!$('overview').hidden) drawChart(); });
 document.addEventListener('visibilitychange', () => {
   clearTimeout(refreshTimer);
   if (!document.hidden && !$('overview').hidden) refresh();
@@ -110,14 +118,15 @@ function drawChart() {
     host.append(hint); return;
   }
   const ns = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(ns, 'svg'); svg.setAttribute('viewBox', '0 0 600 190');
+  const width = host.clientWidth || 600, height = host.clientHeight || 190;
+  const svg = document.createElementNS(ns, 'svg'); svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
   svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', 'Accepted event rate across measured session samples');
   const max = Math.max(1, ...available.map(item => item.value));
   const start = samples[0].at, duration = Math.max(1, samples.at(-1).at - start);
   let path = '', connected = false;
   for (const item of samples) {
     if (!isNumber(item.value)) { connected = false; continue; }
-    const x = 4 + (item.at - start) / duration * 590, y = 170 - item.value / max * 145;
+    const x = 4 + (item.at - start) / duration * (width - 10), y = height - 20 - item.value / max * (height - 45);
     path += `${connected ? ' L' : ' M'}${x.toFixed(2)},${y.toFixed(2)}`; connected = true;
   }
   const line = document.createElementNS(ns, 'path');
@@ -288,4 +297,13 @@ $('lookup-form').addEventListener('submit', async event => {
     $('lookup-notice').textContent = error instanceof ApiError ? error.message : 'The query could not be confirmed.';
   } finally { if (query === lookupGeneration && version === generation) $('lookup-button').disabled = false; }
 });
+for (const link of document.querySelectorAll('a[href^="#"]')) {
+  if (!['#overview', '#playground', '#inspector', '#diagnostics'].includes(link.hash)) continue;
+  link.addEventListener('click', event => {
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    if (location.hash !== link.hash) history.pushState(null, '', link.hash);
+    switchView();
+  });
+}
 newEvent(); switchView();

@@ -90,12 +90,25 @@ try {
   await run('mobile navigation fits and reload clears credentials', async page => {
     await page.setViewportSize({ width: 390, height: 844 }); await connect(page);
     await page.waitForFunction(() => document.getElementById('buffer-records').textContent === '12');
+    await page.locator('#refresh').click();
+    await page.waitForFunction(() => document.getElementById('accepted-rate').textContent !== '—');
+    await page.locator('#refresh').click();
+    await page.locator('#chart svg').waitFor();
+    assert.ok(await page.locator('#chart').evaluate(element => element.querySelector('svg').viewBox.baseVal.width === element.clientWidth));
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await saveScreenshot(page, 'fixture-mobile.png');
     await page.getByRole('link', { name: /Event playground/ }).click();
     await page.getByRole('heading', { name: /Event playground/ }).waitFor({ state: 'visible' });
+    await page.waitForFunction(() => scrollY === 0);
+    await page.getByRole('link', { name: /Event playground/ }).click();
+    await page.waitForFunction(() => scrollY === 0);
+    await page.locator('.skip').focus();
+    await page.locator('.skip').press('Enter');
+    assert.ok(await page.getByRole('heading', { name: /Event playground/ }).isVisible());
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'main');
     await page.reload();
     assert.equal(await page.locator('#session-status').textContent(), 'No credentials');
+    await page.waitForFunction(() => scrollY === 0);
   });
   await fs.mkdir(reports, { recursive: true });
   await fs.writeFile(path.join(reports, 'browser-contracts.json'), JSON.stringify({ syntheticFixtures: true, cases: results }, null, 2));
