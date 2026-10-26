@@ -1,0 +1,8 @@
+telemetry:
+  component: collector
+management:
+  endpoint:
+    health:
+      group:
+        readiness:
+          include: readinessState,collectorBuffer

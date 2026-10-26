@@ -1,0 +1,4 @@
+# Requires a separately provisioned, authenticated Kafka cluster with >= 3 brokers.
+telemetry:
+  replication-factor: 3
+  min-in-sync-replicas: 2

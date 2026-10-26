@@ -10,6 +10,8 @@ Java 21 components for reliable telemetry ingestion and processing.
 | `platform-config` | Validated resource limits and production transport policy |
 | `durable-buffer` | Checksummed persistent buffering, exclusive ownership and recoverable delivery checkpoints |
 | `event-schemas` | Compatible Avro envelopes and size/deadline-bounded Schema Registry access |
+| `platform-observability` | Fixed-cardinality metrics and W3C trace propagation |
+| `service` | Authenticated collector and persistence runtime integration |
 
 ## Build and verify
 
@@ -25,6 +27,15 @@ The core runner and its JUnit adapter execute the same contracts; do not count t
 The persistent buffer synchronizes file contents and its directory before append completion. Its recovery guarantee assumes the volume survives; it is not replicated storage. See [buffer recovery](docs/buffer.md).
 
 Avro schema evolution and registry transport behavior are described in [schema contracts](docs/schemas.md).
+
+## Collector runtime
+
+The collector validates JWT identity and scopes, derives the tenant from the token, and returns HTTP 202 after a synchronized local-volume append. Kafka dispatch is asynchronous. Permanent collector-volume loss before Kafka acknowledgement is outside this guarantee. See [design](docs/design.md) and [operations](docs/operations.md).
+
+```bash
+./mvnw --batch-mode --no-transfer-progress -f tools/schema-registry-runtime/pom.xml org.apache.maven.plugins:maven-dependency-plugin:3.9.0:build-classpath -Dmdep.outputFile=target/classpath.txt
+./mvnw --batch-mode --no-transfer-progress -Pregistry-integration verify
+```
 
 ## Development
 
