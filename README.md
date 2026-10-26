@@ -56,6 +56,10 @@ The Compose stack binds host ports to loopback and uses generated demo credentia
 
 The [AWS reference](infra/aws/README.md) provides private EKS, encrypted storage and ECR configuration. Validation and mocked policy tests do not establish a real AWS deployment or high availability.
 
+## Performance and verification
+
+The [load harness and profiling protocol](docs/performance.md) separate offered traffic, accepted traffic, client drops and accepted-ID reconciliation. No pipeline capacity or whole-service profiling result is claimed. [Verification records](docs/verification.md) distinguish current CI checks from historical foundation evidence.
+
 ## Development
 
 Changes are proposed from feature branches and merged through PRs after the relevant checks pass. The foundation was extracted from [draft PR #2](https://github.com/GeekNandy/real-time-telemetry-data-platform/pull/2); the [review sequence](docs/review-sequence.md) explains its decomposition. Owner-authorized merging is not independent human approval.

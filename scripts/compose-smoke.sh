@@ -38,4 +38,13 @@ message=enc({'alg':'HS256','typ':'JWT'})+'.'+enc({'iss':'http://localhost:8080',
 token=message+'.'+base64.urlsafe_b64encode(hmac.new(Path(sys.argv[1]).read_bytes(),message.encode(),hashlib.sha256).digest()).decode().rstrip('=')
 target=Path(sys.argv[2]);target.write_text(token);target.chmod(0o600)
 PY_TOKEN
-python3 scripts/smoke-reconcile.py --token-file "$telemetry_secrets/token" --output "$telemetry_reports/http-contract"
+python3 scripts/load.py --rate 5 --duration 4 --token-file "$telemetry_secrets/token" --output "$telemetry_reports/http-contract"
+python3 - "$telemetry_reports/http-contract/summary.json" <<'PY_SMOKE'
+import json,sys
+from pathlib import Path
+summary=json.loads(Path(sys.argv[1]).read_text())
+assert summary['scheduled']==20, summary
+assert summary['outcomes']=={'202':20}, summary['outcomes']
+assert summary['accepted_reconciliation']['passed'], summary['accepted_reconciliation']
+assert summary['accepted_reconciliation']['visible']==20, summary['accepted_reconciliation']
+PY_SMOKE

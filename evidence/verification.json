@@ -1,0 +1,133 @@
+{
+  "observed_date": "2026-10-25",
+  "tested_source_revision": "8ba27676b1bcaa84bce483696c3372210a0aa04f",
+  "source_branch": "feature/platform-foundation",
+  "toolchain": {
+    "java": "Temurin 21.0.13+9",
+    "maven": "3.9.12",
+    "helm": "3.22.0",
+    "kubeconform": "0.7.0",
+    "formatter": "1.28.0"
+  },
+  "unit_suites": [
+    {
+      "name": "dev.sharad.telemetry.core.CoreContractTest",
+      "tests": "27",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "0.833"
+    },
+    {
+      "name": "dev.sharad.telemetry.buffer.DiskBufferTest",
+      "tests": "12",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "0.425"
+    },
+    {
+      "name": "dev.sharad.telemetry.schema.SchemaContractTest",
+      "tests": "5",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "0.277"
+    },
+    {
+      "name": "dev.sharad.telemetry.config.PlatformSettingsTest",
+      "tests": "3",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "0.063"
+    },
+    {
+      "name": "dev.sharad.telemetry.config.ProductionPolicyTest",
+      "tests": "5",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "0.02"
+    },
+    {
+      "name": "dev.sharad.telemetry.observability.PlatformTelemetryTest",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "0.183"
+    },
+    {
+      "name": "dev.sharad.telemetry.service.SecurityContractTest",
+      "tests": "10",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "0.173"
+    },
+    {
+      "name": "dev.sharad.telemetry.service.WireContractTest",
+      "tests": "3",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "0.4"
+    }
+  ],
+  "native_integration_suites": [
+    {
+      "name": "dev.sharad.telemetry.service.BrokerDurabilityIT",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "23.452"
+    },
+    {
+      "name": "dev.sharad.telemetry.service.CollectorContractIT",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "37.764"
+    },
+    {
+      "name": "dev.sharad.telemetry.service.RegistryContractIT",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "14.025"
+    }
+  ],
+  "production_chart_cases_passed": 10,
+  "development_kubernetes_resources_validated": 14,
+  "production_kubernetes_resources_validated": 8,
+  "pending": [
+    "Docker/PostgreSQL integration execution",
+    "Container build and Compose demonstration",
+    "kind rollout and HTTP smoke",
+    "AWS provider validation and mocked policy tests",
+    "End-to-end load and whole-service JFR analysis",
+    "Remote Git bootstrap and draft PR",
+    "Independent human review"
+  ],
+  "limits": [
+    "Native broker tests have one controller and do not prove controller-quorum HA.",
+    "Collector acceptance depends on retaining its volume until Kafka acknowledgement.",
+    "No production capacity or deployment result is claimed."
+  ],
+  "main_tree_at_observation": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+  "publication": {
+    "date": "2026-10-26",
+    "published_equivalent_of_tested_source": "456cdfc482a45cd22d64030d2644c74ba1080d8c",
+    "tested_source_tree": "9a95fddba355ad81541e8babc3663dd1ffdaae32",
+    "pull_request": "https://github.com/GeekNandy/real-time-telemetry-data-platform/pull/2",
+    "main_files": [
+      "README.md"
+    ],
+    "provenance": "evidence/published-source.json"
+  },
+  "subsequent_ci_record": "evidence/ci-2026-10-26.json"
+}

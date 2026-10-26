@@ -1,0 +1,80 @@
+{
+  "observed_date": "2026-10-26",
+  "original_foundation_head": "0cec67f94cd6d7489ffd9b24429259e9ce29b7d9",
+  "original_pr": 2,
+  "completed_before_this_pr": [
+    {
+      "stage": 1,
+      "pr": 4,
+      "head": "c9348ecbb21c6bea76cde363777626b8528347bc",
+      "merge": "d79892eddcfefc69fe8168b409f3fba088ee8f63",
+      "tree": "d3d62e89a3ea7756f1c6338cf6413b37c33af15b",
+      "ci_run": 40345796709
+    },
+    {
+      "stage": 2,
+      "pr": 5,
+      "head": "d07a14ed83f40df386d96cdcb29c6833e295b4d3",
+      "merge": "0a3b4633f6e3410e22fafe8ae26e4fe6a3168ecf",
+      "tree": "b43735be0cfccb51142522bdfbd2088760636c41",
+      "ci_run": 40347098253
+    },
+    {
+      "stage": 3,
+      "pr": 6,
+      "head": "b4c0b5095e7750194d626e4bc16068c6bb25ca15",
+      "merge": "9270b47c8b4c9ca5a2d738b27e7538d6b10b5475",
+      "tree": "1978db499e36667f35c0707a832f18589d43333a",
+      "ci_run": 40348037167
+    },
+    {
+      "stage": 4,
+      "pr": 7,
+      "head": "15a77ee6803c410b1a05d5916535da758daad6f6",
+      "merge": "235c4ed9406a26891a66260e6e2e282eeba9c443",
+      "tree": "ac939a9dadc5e119c03b36433215588c83a334c6",
+      "ci_run": 40349646799
+    },
+    {
+      "stage": 5,
+      "pr": 8,
+      "head": "4e74a38369ec5def003f51837e5c958c43b4831f",
+      "merge": "49623cefae1846ae15d71bcf46a395d70a8d3aa7",
+      "tree": "2b4401e056dd82f0924b05b676c835424c8532ac",
+      "ci_run": 40351688418
+    },
+    {
+      "stage": 6,
+      "pr": 9,
+      "head": "70df3502533e7793ce8ec1a7836d33fa14a8eebd",
+      "merge": "08119c6c9a41e4c2b4fa0c1172fe56c459a42a85",
+      "tree": "bd95bfee2e589e9f619c11b5a2bb0997d7ffcb1a",
+      "ci_run": 40358095968,
+      "observed_failures": [
+        {
+          "head": "162056c6e71ac83174920a30a2a13b71050525cb",
+          "ci_run": 40353822606,
+          "job_id": 121683821184,
+          "cause": "An unquoted YAML flow-list comma split tmpfs options into an invalid second mount path"
+        },
+        {
+          "head": "98aa2ba06a27e5ca5889d20aabadeb9c8dde97dc",
+          "ci_run": 40356007385,
+          "job_id": 121690178195,
+          "cause": "Readiness polling exited on a transient connection reset immediately after container startup"
+        }
+      ]
+    },
+    {
+      "stage": 7,
+      "pr": 10,
+      "head": "671a6e86b5448e724d28c191a51d5435451bbfd7",
+      "merge": "126f34eddaa49a7b226784999ad92ce0dd69752d",
+      "tree": "55c5e328cb114f315fdcb2b3b1d7dc3af03b27a4",
+      "ci_run": 40359885256
+    }
+  ],
+  "current_pr_scope": "Final load/reconciliation and profiling-methodology change",
+  "final_checks": "See this PR workflow and artifacts; this file does not claim its own future execution result",
+  "independent_human_review": false
+}

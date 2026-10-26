@@ -1,0 +1,40 @@
+{
+  "published_date": "2026-10-26",
+  "pull_request_url": "https://github.com/GeekNandy/real-time-telemetry-data-platform/pull/2",
+  "base": {
+    "branch": "main",
+    "commit": "89546ea7a9acc1872e5ffaa68c0763a33f6d769d",
+    "files": [
+      "README.md"
+    ]
+  },
+  "feature_branch": "feature/platform-foundation",
+  "source_commits": [
+    {
+      "local_sha": "86e098b8c4ac77ec4af3051a55c8c400fe8d1e58",
+      "remote_sha": "c1cc61922ddac5a7b12b6348c500fe9038d11758",
+      "tree": "a2f96fd3d64c192fed3ba93f1c2dbedb379ec5f1"
+    },
+    {
+      "local_sha": "94f9134e1d17696dec6ea188a05a3e13733cfa90",
+      "remote_sha": "ddd7594e692e1916dfe6d58fccdffba476b6e3a8",
+      "tree": "1079d73daf8f3297ccd964799a2fdec42728b540"
+    },
+    {
+      "local_sha": "8ba27676b1bcaa84bce483696c3372210a0aa04f",
+      "remote_sha": "456cdfc482a45cd22d64030d2644c74ba1080d8c",
+      "tree": "9a95fddba355ad81541e8babc3663dd1ffdaae32"
+    },
+    {
+      "local_sha": "80f1c15e0346841ce8b690ab709a2451d506f57e",
+      "remote_sha": "a3e556ba22ba0396d422e87b8ffa8f70437189b3",
+      "tree": "086047621839d6da3ec26cc281e7ac0970b97fe2"
+    },
+    {
+      "local_sha": "582164da0f334015536cc6676623b6905e011fc2",
+      "remote_sha": "acc20365fd490d77cd9c308f9c1ed13594c7e8f6",
+      "tree": "9c63ad168940a4f1dd15db4dd989fea88071d839"
+    }
+  ],
+  "note": "The saved source commits were published onto the README-only bootstrap. Each published Git tree was checked against the original tree, preserving file contents and modes. Historical test results refer to the original source content; this publication does not imply a new test run."
+}
