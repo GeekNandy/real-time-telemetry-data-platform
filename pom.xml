@@ -18,6 +18,8 @@
   </properties>
   <modules>
     <module>core</module>
+    <module>platform-config</module>
+    <module>durable-buffer</module>
   </modules>
   <dependencyManagement>
     <dependencies>
