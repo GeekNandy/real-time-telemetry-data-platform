@@ -27,7 +27,11 @@ helm template telemetry deploy/helm/telemetry -f /path/to/reviewed-values.yaml >
 kubeconform -strict -summary /tmp/telemetry.yaml
 ```
 
-The collector StatefulSet uses retained exclusive PVCs. Replicas do not replicate
+The collector StatefulSet uses retained exclusive PVCs. The volume mounts at
+`/app/data`; the application creates and owns its private `wal/` subdirectory.
+This allows strict permissions without changing the Kubernetes-owned mount root.
+An existing spool stored at a volume root requires an explicit drain or data
+migration before adopting this layout. Replicas do not replicate
 one another's buffers; preserve every ordinal and its volume during changes.
 Workers use independent deployments, manual Kafka acknowledgements and a bounded
 JDBC scheduler. Startup/readiness/liveness have distinct purposes. Graceful stop

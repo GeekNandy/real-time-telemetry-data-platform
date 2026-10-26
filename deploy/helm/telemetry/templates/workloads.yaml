@@ -94,7 +94,7 @@ spec:
           volumeMounts:
             - {name: tmp, mountPath: /tmp}
             {{- if eq $role "collector" }}
-            - {name: wal, mountPath: /app/data/wal}
+            - {name: wal, mountPath: /app/data}
             {{- end }}
       volumes:
         - name: tmp

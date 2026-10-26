@@ -38,6 +38,10 @@ kubectl --context "$telemetry_context" -n "$telemetry_namespace" rollout status 
 docker build -t real-time-telemetry-data-platform:ci .
 kind load docker-image --name "$telemetry_cluster" real-time-telemetry-data-platform:ci
 helm upgrade --install ci deploy/helm/telemetry --kube-context "$telemetry_context" -n "$telemetry_namespace" -f deploy/helm/telemetry/values-ci.yaml --wait --timeout 240s
+# The process must own the private spool directory, not the Kubernetes-managed volume root.
+telemetry_wal_permissions="$(kubectl --context "$telemetry_context" -n "$telemetry_namespace" exec statefulset/ci-telemetry-collector -- stat -c '%u:%g %a' /app/data/wal)"
+printf '%s\n' "$telemetry_wal_permissions" > "$telemetry_reports/wal-permissions.txt"
+[ "$telemetry_wal_permissions" = "10001:10001 700" ]
 kubectl --context "$telemetry_context" -n "$telemetry_namespace" port-forward service/ci-telemetry-collector 8080:8080 > "$telemetry_reports/collector-forward.log" 2>&1 &
 telemetry_forward_collector=$!
 kubectl --context "$telemetry_context" -n "$telemetry_namespace" port-forward service/ci-telemetry-worker 8082:8080 > "$telemetry_reports/worker-forward.log" 2>&1 &
