@@ -101,7 +101,6 @@
       "time": "14.025"
     }
   ],
-  "main_tree": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
   "production_chart_cases_passed": 10,
   "development_kubernetes_resources_validated": 14,
   "production_kubernetes_resources_validated": 8,
@@ -118,5 +117,16 @@
     "Native broker tests have one controller and do not prove controller-quorum HA.",
     "Collector acceptance depends on retaining its volume until Kafka acknowledgement.",
     "No production capacity or deployment result is claimed."
-  ]
+  ],
+  "main_tree_at_observation": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+  "publication": {
+    "date": "2026-10-26",
+    "published_equivalent_of_tested_source": "456cdfc482a45cd22d64030d2644c74ba1080d8c",
+    "tested_source_tree": "9a95fddba355ad81541e8babc3663dd1ffdaae32",
+    "pull_request": "https://github.com/GeekNandy/real-time-telemetry-data-platform/pull/2",
+    "main_files": [
+      "README.md"
+    ],
+    "provenance": "evidence/published-source.json"
+  }
 }

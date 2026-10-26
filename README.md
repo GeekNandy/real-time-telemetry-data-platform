@@ -95,6 +95,6 @@ one broker. Its fault model differs from the replicated deployment.
 
 The `main` branch contains only the project overview. All implementation,
 documentation and CI changes live on `feature/platform-foundation` and are
-proposed through a draft PR. Keep main limited to its README until the owner
+proposed in [draft PR #2](https://github.com/GeekNandy/real-time-telemetry-data-platform/pull/2). Keep main limited to its README until the owner
 explicitly approves a merge. The verification record distinguishes observed
 results from pending CI, deployment, profiling and independent review.

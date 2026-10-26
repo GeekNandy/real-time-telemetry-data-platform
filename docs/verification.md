@@ -19,7 +19,16 @@ pending deployment checks, not a production-readiness certification.
 | PostgreSQL integration | Ten-container-backed test cases compile; execution pending because Docker is unavailable |
 | Container and kind | Build, Compose runtime and Kubernetes smoke checks are written in CI but have not run |
 | End-to-end load/JFR | Bounded harness and profiling protocol provided; no measured pipeline capacity or whole-service profiling result |
-| Review/publication | README-only main is initialized; feature publication and draft PR are in progress. CI and independent review remain pending |
+| Review/publication | README-only main and feature source are published; [draft PR #2](https://github.com/GeekNandy/real-time-telemetry-data-platform/pull/2) is open. CI and independent review remain pending |
+
+## Published source
+
+Publication completed on 26 October 2026. The original tested content is preserved
+in the published commit with the same Git tree. See
+[`evidence/published-source.json`](../evidence/published-source.json) for the
+original-to-published commit mapping and byte-for-byte tree checks. Historical
+test results retain their original observation date; publication is not a new
+test execution. GitHub CI reports subsequent runs on the PR.
 
 ## Executed JVM checks
 
