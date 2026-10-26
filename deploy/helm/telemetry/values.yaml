@@ -1,0 +1,28 @@
+production: true
+image: "" # Require registry/repository@sha256:... in production.
+imagePullPolicy: IfNotPresent
+existingSecret: telemetry-runtime
+collector:
+  replicas: 2
+  volumeSize: 1Gi
+  storageClass: gp3-encrypted
+worker:
+  replicas: 2
+resources:
+  requests: {cpu: 500m, memory: 512Mi}
+  limits: {cpu: '1', memory: 768Mi}
+runtime:
+  kafkaBootstrapServers: ""
+  schemaRegistryUrl: ""
+  issuer: ""
+  audience: telemetry
+  kafkaSecurityProtocol: SASL_SSL
+  kafkaSaslMechanism: PLAIN
+  otlpEndpoint: ""
+networkPolicy:
+  enabled: true
+  # Each peer follows the Kubernetes NetworkPolicyPeer schema. Empty denies application ingress.
+  ingressPeers: []
+  # Complete NetworkPolicyEgressRule entries for Kafka, registry, JWT/JWKS, DB and OTLP.
+  # DNS is allowed separately to kube-dns only. Production must supply these rules.
+  egress: []

@@ -1,0 +1,31 @@
+groups:
+  - name: telemetry
+    rules:
+      - alert: TelemetryScrapeFailed
+        expr: up{job="telemetry"} == 0
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "Telemetry metrics unavailable; check readiness and scraper token expiry"
+          runbook: "docs/operations.md#metrics-and-authentication"
+      - alert: TelemetryBufferAging
+        expr: telemetry_buffer_oldest_age > 60
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "Durable records have waited more than 60 seconds for Kafka"
+          runbook: "docs/operations.md#kafka-outage-or-volume-pressure"
+      - alert: TelemetryAppendFailure
+        expr: increase(telemetry_ingestion_failed_total[5m]) > 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "A durable append failed; reconcile ambiguous client outcomes"
+          runbook: "docs/operations.md#kafka-outage-or-volume-pressure"
+      - alert: TelemetryPersistenceFailure
+        expr: rate(telemetry_stage_failures_total{stage="persistence"}[5m]) > 0
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "Persistence retries or DLT processing require investigation"
+          runbook: "docs/operations.md#database-outage-and-offsets"
