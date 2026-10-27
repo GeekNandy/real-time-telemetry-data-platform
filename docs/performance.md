@@ -68,6 +68,46 @@ runs; sampling changes the workload. Review recordings before sharing: disabling
 the listed metadata events is not a guarantee that every diagnostic is free of
 sensitive information. No whole-service JFR finding is published yet.
 
+## Reproducible CI experiment
+
+The **Capacity experiment** workflow has a short `pilot` mode that validates the
+complete harness, and a manual `full` mode. Full mode uses standard public Linux
+runners with nine independent cases: 10, 50 and 150 offered events/second, each
+repeated three times on fresh runtimes. Every case compares a pinned local-spool
+acceptance baseline, Kafka-confirmed acceptance and a profiled Kafka-confirmed run.
+Each phase starts fresh dependency/application volumes, warms at up to 10/s for
+one minute, then measures ten minutes. Even repetitions reverse the phase order.
+
+Both roles have one CPU and 768 MiB, use the three-broker RF3/minISR2 reference,
+one synthetic tenant, 64 bounded client slots and 10% trace sampling. The harness
+records exact source/image identities, host CPU/memory, filesystem observations,
+raw request outcomes/timestamps, acknowledged-ID reconciliation, live source lag,
+buffer occupancy, CPU/memory and container restarts. A persistent Java admin
+observer samples offsets once per second; Docker and HTTP snapshots run every
+five seconds. The generator and observers share the runner with the services.
+
+The stated workload budgets are at least 99% offered-to-202 success, scheduled
+response p99 <= 1000 ms, generator-delay p99 <= 50 ms, observed source lag <= two
+seconds of offered traffic, at least 90% lag-sample coverage, application memory
+below 90% of its quota, no OOM/restart and complete reconciliation of accepted IDs.
+Failures are retained as measured results. All three unprofiled repetitions must
+pass before an offered rate is described as a passing tested point. That does not
+identify a production ceiling. A separate generator host and controlled storage
+remain necessary for broader capacity claims.
+
+Whole collector/worker recordings use the sanitized JFR configuration. Analysis
+is restricted to the measured load window and reports sampled CPU stacks,
+weighted allocation estimates, GC pauses and thresholded file/park events.
+Profiled/unprofiled comparisons expose measurement overhead. Raw synthetic request
+logs and selected diagnostic recordings are retained for one day to bound artifact
+storage; aggregate results and recording/report hashes can be committed as evidence.
+The pilot is explicitly ineligible for ten-minute capacity conclusions.
+
+```bash
+python3 scripts/test-capacity.py
+python3 scripts/capacity-report.py --aggregate downloaded-full-run-artifacts > results.json
+```
+
 ## Component overhead only
 
 `./scripts/benchmark-core.sh 8 50000` uses eight closed-loop clients and an
