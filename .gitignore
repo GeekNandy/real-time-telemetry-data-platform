@@ -14,3 +14,4 @@ data/
 *.tfvars
 crash.log
 **/node_modules/
+console/dist/

@@ -1,0 +1,45 @@
+{
+  "scope": "Recorded synthetic correctness checks against real Kafka, Schema Registry and PostgreSQL dependencies.",
+  "workflowUrl": "https://github.com/GeekNandy/real-time-telemetry-data-platform/actions/runs/40512112182",
+  "workflowRun": 40512112182,
+  "workflowAttempt": 2,
+  "sourceRevision": "a6c07ebd5789d1b85a712f4899218094f5c9acc7",
+  "executionRevision": "645a4d0c2007333523eedeb0980353c01f22a19c",
+  "executionTree": "d9213458cee0c4629c573ed924f2cdbf46e67280",
+  "artifactId": 12738841014,
+  "observedDate": "2026-10-27",
+  "checks": {
+    "javaCases": 93,
+    "unitContracts": 80,
+    "integrationCases": 13,
+    "clientCases": 8,
+    "browserCases": 8
+  },
+  "limits": "Twenty-event correctness smokes. Client timings include network and polling effects; they are not capacity measurements.",
+  "files": {
+    "compose-summary.json": {
+      "artifactPath": "compose-smoke/http-contract/summary.json",
+      "sha256": "962eae8ca23d0e7550ddd9f11a871f8d5b4b55824d630451f8163c2e066bff11"
+    },
+    "compose-requests.jsonl": {
+      "artifactPath": "compose-smoke/http-contract/requests.jsonl",
+      "sha256": "7a097f544c256b461a06d59d50a41ec4b38ae503b0e9f808aa22cf6b9c70e088"
+    },
+    "kind-summary.json": {
+      "artifactPath": "kind-smoke/http-contract/summary.json",
+      "sha256": "b6e0d489f9e151ad6dc7d17831459e1cff5f52dcaa4f3a41a6ae7966abefa2ba"
+    },
+    "kind-requests.jsonl": {
+      "artifactPath": "kind-smoke/http-contract/requests.jsonl",
+      "sha256": "89cf2df5d01a744c1c55bbb3fd91071f1f2d761cb018474801058ee7b28ec052"
+    },
+    "browser.json": {
+      "artifactPath": "compose-smoke/console/live-console.json",
+      "sha256": "546278fddb9f6f8b8f93ae4444ae073a890828f2bef388ce832d6c6ec6366d89"
+    },
+    "observability.json": {
+      "artifactPath": "compose-smoke/observability.json",
+      "sha256": "cc434de595896a37aa2c47be9921005b83828657f91894fe4c898a154cd763d0"
+    }
+  }
+}

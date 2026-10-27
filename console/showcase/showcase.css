@@ -1,0 +1,31 @@
+.recording-bar{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:24px;color:var(--muted);font-size:10px}
+.recording-bar>span{color:var(--lime);letter-spacing:.04em}
+.topbar-actions>.badge{display:inline-flex}
+select{background:var(--surface);color:var(--text);border:1px solid #45513b;border-radius:5px;padding:7px 9px;font:inherit;max-width:100%}
+.recording-bar label{display:flex;align-items:center;gap:10px}
+.chart-control{font-size:9px;color:var(--muted);display:flex;align-items:center;gap:7px}
+.metric strong{white-space:nowrap}
+.chart circle{fill:var(--lime);stroke:var(--surface);stroke-width:2}
+.chart text{font-family:inherit;font-size:10px;fill:var(--muted)}
+.event-layout{grid-template-columns:minmax(0,1.12fr) minmax(0,1fr);align-items:start}
+.table-scroll{overflow:auto;max-height:660px}
+.event-table{width:100%;border-collapse:collapse;white-space:nowrap;font-size:10px}
+.event-table th{color:var(--muted);font-size:9px;font-weight:500;text-align:left;background:#181d23}
+.event-table th,.event-table td{padding:12px 15px;border-top:1px solid var(--line)}
+.event-table tr.selected{background:#222e1d}
+.event-table td:nth-child(2){color:var(--lime)}
+.event-table .button{padding:5px 9px;font-size:9px}
+.event-id{font-family:ui-monospace,SFMono-Regular,monospace;overflow-wrap:anywhere;line-height:1.8}
+.observation{border-top:1px solid var(--line)}
+.observation summary{padding:14px 22px;cursor:pointer;color:var(--muted);font-size:11px}
+.observation pre{font-size:10px;max-height:400px}
+.journey-panel .journey{margin-bottom:10px}
+.diagnostic-notes dd{overflow-wrap:anywhere}
+.diagnostic-notes>p{font-size:12px;margin-top:13px;line-height:1.8}
+.launch-command{background:#11171d;border:1px solid var(--line);border-radius:6px;padding:20px;overflow-x:auto;margin:18px 0}
+.launch-command code{font-size:12px;line-height:2}
+.local-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:22px}
+#run-status{color:var(--lime)}
+#load-error{margin:0 0 20px}
+@media(max-width:1100px){.event-layout{grid-template-columns:1fr}.event-table th,.event-table td{padding:11px 14px}}
+@media(max-width:720px){.recording-bar{align-items:flex-start;flex-direction:column}.recording-bar label{width:100%;justify-content:space-between}.topbar-actions .badge{font-size:8px}.topbar-actions{flex-wrap:wrap;justify-content:flex-end}.chart-control{flex-direction:column;align-items:flex-end}.event-table th,.event-table td{padding:11px 10px}.launch-command code{font-size:10px}.page-footer span{overflow-wrap:anywhere}}

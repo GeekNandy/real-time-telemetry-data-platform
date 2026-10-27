@@ -22,6 +22,8 @@ jobs:
         run: npm --prefix console test
       - name: Test actual browser workflows against explicit synthetic fixtures
         run: npm --prefix console run test:browser
+      - name: Verify the recorded-run explorer in a real browser
+        run: npm --prefix console run test:showcase
       - name: Collect browser reports and fixture screenshots
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
