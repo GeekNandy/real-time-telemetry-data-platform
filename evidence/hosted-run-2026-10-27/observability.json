@@ -1,0 +1,9 @@
+{
+  "grafanaDashboardProvisioned": true,
+  "grafanaDatasourceProvisioned": true,
+  "dashboardPanels": 6,
+  "authenticatedScrapeTargetsUp": [
+    "collector",
+    "worker"
+  ]
+}

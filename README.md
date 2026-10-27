@@ -2,6 +2,10 @@
 
 Java 21 components for reliable telemetry ingestion and processing.
 
+The [recorded-run explorer](docs/hosted-showcase.md) presents captured requests,
+acceptance receipts and matching queries from a verified run. Open it through
+the repository's Website link; use the local operator console for live operations.
+
 ## Components
 
 | Module | Responsibility |

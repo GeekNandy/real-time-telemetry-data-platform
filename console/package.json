@@ -4,9 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test test/model.test.js",
+    "test": "node build-showcase.mjs && node --test test/*.test.js",
     "test:browser": "node test/browser.mjs",
-    "test:live": "node test/live.mjs"
+    "test:live": "node test/live.mjs",
+    "test:showcase": "node build-showcase.mjs && node test/showcase-browser.mjs"
   },
   "devDependencies": { "playwright": "1.62.1" },
   "engines": { "node": ">=20.19" }
