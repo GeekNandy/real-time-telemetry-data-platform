@@ -140,7 +140,12 @@ test('a static entry build contains no application assets or recording to bypass
   try {
     await fs.writeFile(path.join(directory, 'recorded-run.json'), '{"old":"data"}');
     await buildShowcase({ destination: directory, redirectUrl: 'https://protected-fixture.onrender.com/' });
-    assert.deepEqual(await fs.readdir(directory), ['index.html']);
+    const redirect = 'https://protected-fixture.onrender.com';
+    assert.deepEqual(JSON.parse(await fs.readFile(path.join(directory, 'recorded-run.json'))), { signInUrl: redirect + '/login' });
+    assert.equal(await fs.readFile(path.join(directory, 'app.js'), 'utf8'), 'location.replace("' + redirect + '/login");\n');
+    for (const name of ['run-model.js', 'base.css', 'showcase.css', 'mark.svg']) {
+      assert.doesNotMatch(await fs.readFile(path.join(directory, name), 'utf8'), /Recorded run|schemaVersion|event_id|old.*data/);
+    }
     assert.match(await fs.readFile(path.join(directory, 'index.html'), 'utf8'), /https:\/\/protected-fixture.onrender.com/);
     for (const redirectUrl of ['http://protected-fixture.onrender.com/', 'https://unrelated.invalid/', 'https://protected-fixture.onrender.com/?secret=value']) {
       await assert.rejects(buildShowcase({ destination: directory, redirectUrl }));
