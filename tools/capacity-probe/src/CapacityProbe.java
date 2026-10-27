@@ -43,12 +43,14 @@ public final class CapacityProbe {
           var requested = new HashMap<TopicPartition, OffsetSpec>();
           for (var partition : topic.partitions())
             requested.put(new TopicPartition(args[1], partition.partition()), OffsetSpec.latest());
-          var ends = admin.listOffsets(requested).all().get(2, TimeUnit.SECONDS);
+          // Sample commits before log ends. The reverse order can compare a newer commit with an
+          // older end offset and manufacture negative lag while healthy traffic is advancing.
           var committed =
               admin
                   .listConsumerGroupOffsets(args[2])
                   .partitionsToOffsetAndMetadata()
                   .get(2, TimeUnit.SECONDS);
+          var ends = admin.listOffsets(requested).all().get(2, TimeUnit.SECONDS);
           long totalEnd = 0;
           long totalCommitted = 0;
           for (var partition : requested.keySet()) {
