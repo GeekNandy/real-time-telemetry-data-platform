@@ -105,7 +105,7 @@ $('measure').addEventListener('change', () => { if (recording) drawChart(); });
 new ResizeObserver(() => { if (recording && !$('overview').hidden) drawChart(); }).observe($('chart'));
 
 async function load() {
-  const response = await fetch('./recorded-run.json', { signal: AbortSignal.timeout(5000), credentials: 'omit', redirect: 'error' });
+  const response = await fetch('./recorded-run.json', { signal: AbortSignal.timeout(5000), credentials: 'same-origin', redirect: 'error' });
   if (!response.ok) throw new Error('The captured run is unavailable.');
   const reader = response.body?.getReader();
   if (!reader) throw new Error('The captured run is empty.');
