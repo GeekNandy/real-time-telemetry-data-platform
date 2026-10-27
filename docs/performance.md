@@ -25,7 +25,7 @@ transport outcomes are tracked separately and are not silently counted as losses
 Visibility is measured during a post-load reconciliation sweep. That measurement
 includes sweep/polling delay and is an upper bound; it is not an instrumented
 commit timestamp or an end-to-end latency SLO. HTTP elapsed time covers local
-volume acceptance. It does not cover Kafka acknowledgement or PostgreSQL commit.
+spool append, Kafka acknowledgement and delivery checkpointing. It does not cover PostgreSQL commit.
 
 The short CI run establishes HTTP/persistence correctness. For capacity work,
 warm the system separately, run at least ten minutes at each rate and use three

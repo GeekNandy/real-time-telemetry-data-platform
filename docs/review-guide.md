@@ -12,8 +12,9 @@ Review changes against the platform's delivery, resource and security contracts.
 | Performance | Offered versus accepted traffic, bounded clients and accepted-ID reconciliation | [Profiling protocol](performance.md) |
 | Verification | Relevant contracts, fault checks and results tied to source revisions | [Verification evidence](verification.md) |
 
-HTTP acceptance follows a synchronized local-volume append. Recovery depends on
-retaining that volume until Kafka acknowledgement. Replicated acceptance is
-tracked separately in [issue #3](https://github.com/GeekNandy/real-time-telemetry-data-platform/issues/3).
+HTTP acceptance follows Kafka acknowledgement and a durable delivery checkpoint.
+Review timeout/cancellation ambiguity, effective producer/topic policy, retained
+unconfirmed spool records and deduplicated replay. The three-broker reference and
+the single-broker development configuration have different replication guarantees.
 
 Use the [contribution workflow](../CONTRIBUTING.md) for branch, check and merge requirements.

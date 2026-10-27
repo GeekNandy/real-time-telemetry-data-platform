@@ -2,7 +2,6 @@ package dev.sharad.telemetry.service;
 
 import dev.sharad.telemetry.buffer.DiskBuffer;
 import dev.sharad.telemetry.config.PlatformSettings;
-import dev.sharad.telemetry.core.DurableLog;
 import dev.sharad.telemetry.core.IngestionEngine;
 import dev.sharad.telemetry.observability.PlatformTelemetry;
 import dev.sharad.telemetry.schema.AvroEventCodec;
@@ -11,7 +10,6 @@ import io.micrometer.core.instrument.MeterRegistry;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.concurrent.CompletableFuture;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.health.contributor.Health;
@@ -51,18 +49,31 @@ public class IngestionConfiguration {
     return new DiskBuffer(path, settings.buffer());
   }
 
+  @Bean(destroyMethod = "close")
+  KafkaAcceptance kafkaAcceptance(
+      DiskBuffer buffer,
+      PlatformSettings settings,
+      @Value("${telemetry.acceptance-deadline-ms}") long deadline,
+      MeterRegistry metrics) {
+    var acceptance =
+        new KafkaAcceptance(buffer, settings.globalCapacity(), Duration.ofMillis(deadline));
+    metrics.gauge("telemetry.ingestion.waiting", acceptance, KafkaAcceptance::pendingWaiters);
+    return acceptance;
+  }
+
   @Bean(destroyMethod = "")
   IngestionEngine ingestionEngine(
-      DiskBuffer buffer, AvroEventCodec codec, PlatformSettings settings, MeterRegistry metrics) {
+      DiskBuffer buffer,
+      KafkaAcceptance acceptance,
+      AvroEventCodec codec,
+      PlatformSettings settings,
+      MeterRegistry metrics) {
     var engine =
         new IngestionEngine(
             submission -> {
               var event = submission.event();
-              var entry =
-                  buffer.append(
-                      event.partitionKey(), codec.encode(event), submission.traceHeaders());
-              return CompletableFuture.completedFuture(
-                  new DurableLog.Position("collector-volume", 0, entry.sequence()));
+              return acceptance.append(
+                  event.partitionKey(), codec.encode(event), submission.traceHeaders());
             },
             settings.globalCapacity(),
             settings.tenantCapacity(),
@@ -105,11 +116,12 @@ public class IngestionConfiguration {
   @Bean
   BufferDispatcher bufferDispatcher(
       DiskBuffer buffer,
+      KafkaAcceptance acceptance,
       KafkaTemplate<String, byte[]> kafka,
       PlatformTelemetry telemetry,
       @Value("${telemetry.topic}") String topic,
       MeterRegistry meters) {
-    return new BufferDispatcher(buffer, kafka, telemetry, topic, meters);
+    return new BufferDispatcher(buffer, acceptance, kafka, telemetry, topic, meters);
   }
 
   @Bean

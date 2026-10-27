@@ -1,5 +1,7 @@
 telemetry:
   deployment: production
+  replication-factor: 3
+  min-in-sync-replicas: 2
   schema:
     allow-registration: false
 spring:

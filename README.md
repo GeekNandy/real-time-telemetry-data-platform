@@ -34,7 +34,7 @@ Avro schema evolution and registry transport behavior are described in [schema c
 
 ## Collector runtime
 
-The collector validates JWT identity and scopes, derives the tenant from the token, and returns HTTP 202 after a synchronized local-volume append. Kafka dispatch is asynchronous. Permanent collector-volume loss before Kafka acknowledgement is outside this guarantee. See [design](docs/design.md) and [operations](docs/operations.md).
+The collector validates JWT identity and scopes, derives the tenant from the token, and returns HTTP 202 only after Kafka acknowledges publication and the local delivery checkpoint is durable. The replicated reference uses three brokers, `acks=all` and `min.insync.replicas=2`; the single-broker demo provides no replicated durability. Timeouts are ambiguous and require retries with the same tenant, event ID and content. See [design](docs/design.md) and [operations](docs/operations.md).
 
 ```bash
 ./mvnw --batch-mode --no-transfer-progress -f tools/schema-registry-runtime/pom.xml org.apache.maven.plugins:maven-dependency-plugin:3.9.0:build-classpath -Dmdep.outputFile=target/classpath.txt
