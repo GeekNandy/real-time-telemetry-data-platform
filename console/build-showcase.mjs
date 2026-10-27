@@ -17,6 +17,16 @@ export async function buildShowcase({ destination = path.join(root, 'dist'), red
     await fs.rm(destination, { recursive: true, force: true });
     await fs.mkdir(destination, { recursive: true });
     await fs.writeFile(path.join(destination, 'index.html'), html);
+    // Static CDNs can retain deleted objects. Replace every known viewer path.
+    const placeholders = {
+      'recorded-run.json': JSON.stringify({ signInUrl: url.origin + '/login' }) + '\n',
+      'app.js': 'location.replace(' + JSON.stringify(url.origin + '/login') + ');\n',
+      'run-model.js': 'export {};\n',
+      'base.css': '/* Sign in through the protected explorer. */\n',
+      'showcase.css': '/* Sign in through the protected explorer. */\n',
+      'mark.svg': '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>\n'
+    };
+    for (const [name, body] of Object.entries(placeholders)) await fs.writeFile(path.join(destination, name), body);
     return;
   }
   const evidence = path.resolve(root, '../evidence/hosted-run-2026-10-27');

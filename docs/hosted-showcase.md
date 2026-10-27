@@ -50,7 +50,8 @@ prevention.
 
 A static entry URL can point to the protected service by setting
 SHOWCASE_REDIRECT_URL to that service's HTTPS origin during its build. This mode
-publishes only an entry page, with no explorer assets or recording.
+replaces known viewer paths with sign-in placeholders and publishes no captured
+recording or explorer code.
 
 The build verifies SHA-256 digests for the original reports under
 evidence/hosted-run-2026-10-27 before assembling the public recording.
