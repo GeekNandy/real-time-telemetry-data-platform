@@ -11,6 +11,8 @@ import re
 import subprocess
 import tempfile
 
+BASELINE_REVISION = "7df5bb9d56bb666b95c00b36bfb13af12cb02130"
+
 
 def timestamp(value):
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -36,6 +38,43 @@ def quantiles(values):
 def frame_name(frame):
     method = frame.get("method", {})
     return method.get("type", {}).get("name", "unknown").replace("/", ".") + "." + method.get("name", "unknown")
+
+
+def iter_events(stream, maximum_event_chars=1_048_576):
+    """Decode one JFR event at a time; expanded stack JSON must not grow the process heap."""
+    buffer = ""
+    while True:
+        chunk = stream.read(65536)
+        if not chunk:
+            raise ValueError("Missing JFR event array")
+        buffer += chunk
+        prefix = re.search(r'"events"\s*:\s*\[', buffer)
+        if prefix:
+            buffer = buffer[prefix.end():]
+            break
+        if len(buffer) >= 65536:
+            raise ValueError("Missing JFR event array")
+    decoder = json.JSONDecoder()
+    while True:
+        buffer = buffer.lstrip()
+        if buffer.startswith(","):
+            buffer = buffer[1:].lstrip()
+        if buffer.startswith("]"):
+            return
+        try:
+            value, end = decoder.raw_decode(buffer)
+        except json.JSONDecodeError as error:
+            chunk = stream.read(65536)
+            if not chunk:
+                raise ValueError("Truncated JFR event") from error
+            buffer += chunk
+            if len(buffer) > maximum_event_chars:
+                raise ValueError("JFR event exceeds the parser budget")
+            continue
+        if not isinstance(value, dict):
+            raise ValueError("Invalid JFR event")
+        yield value
+        buffer = buffer[end:]
 
 
 def jfr_events(events, start, end):
@@ -90,7 +129,7 @@ def jfr_report(recording, load, output):
     with tempfile.TemporaryFile(mode="w+") as raw:
         subprocess.run(["jfr", "print", "--json", "--stack-depth", "32", "--events", selected, str(recording)], stdout=raw, check=True)
         raw.seek(0)
-        result = jfr_events(json.load(raw)["recording"]["events"], start, end)
+        result = jfr_events(iter_events(raw), start, end)
     output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     return result
 
@@ -165,6 +204,14 @@ def aggregate(directory):
         load = value["load"]
         if not value["capacity_eligible"] or load["generator"]["scheduled_duration_s"] != 600 or load["working_tree_dirty"]:
             raise ValueError("Require clean ten-minute workload evidence")
+        accepted = load["outcomes"].get("202", 0)
+        reconciliation = load["accepted_reconciliation"]
+        if (load["generator"]["rate_per_s"] != key[0] or load["scheduled"] != key[0] * 600
+                or sum(load["outcomes"].values()) != load["scheduled"]
+                or reconciliation["accepted"] != accepted
+                or reconciliation["visible"] + len(reconciliation["unresolved_ids"]) != accepted
+                or not value["budget"] or value["budget_passed"] != all(value["budget"].values())):
+            raise ValueError("Workload cardinality or budget results are inconsistent")
         observation = {"rate": key[0], "repeat": key[1], "phase": key[2],
             "runtime_revision": value["source_revision"], "generator_revision": load["revision"],
             "duration_seconds": 600, "offered": load["scheduled"], "outcomes": load["outcomes"],
@@ -184,7 +231,9 @@ def aggregate(directory):
     if set(observations) != expected or len(environments) != 9:
         raise ValueError("Require all three rates, three fresh repetitions and all three phases")
     revisions = {e["revision"] for e in environments}
-    if len(revisions) != 1 or any(row["generator_revision"] not in revisions for row in observations.values()):
+    if len(revisions) != 1 or any(row["generator_revision"] not in revisions or row["runtime_revision"] !=
+            (BASELINE_REVISION if row["phase"] == "spool-baseline" else row["generator_revision"])
+            for row in observations.values()):
         raise ValueError("Evidence mixes generator revisions")
     passing = [rate for rate in (10, 50, 150)
                if all(observations[(rate, repeat, "acknowledged")]["budget_passed"] for repeat in (1, 2, 3))]

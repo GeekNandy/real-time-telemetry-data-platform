@@ -19,10 +19,10 @@ import urllib.error
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
-BASELINE = "7df5bb9d56bb666b95c00b36bfb13af12cb02130"
 spec = importlib.util.spec_from_file_location("capacity_report", ROOT / "scripts/capacity-report.py")
 REPORT = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(REPORT)
+BASELINE = REPORT.BASELINE_REVISION
 
 
 def run(command, *, output=None, timeout=900, check=True):

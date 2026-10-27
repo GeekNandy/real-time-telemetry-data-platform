@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta, timezone
 import importlib.util
 import json
+import io
 from pathlib import Path
 import tempfile
 import unittest
@@ -67,6 +68,16 @@ class CapacityReporting(unittest.TestCase):
             report.jfr_events([{"type": "jdk.ObjectAllocationSample", "values": {
                 "startTime": self.start.isoformat(), "weight": -1}}], self.start, self.start)
 
+    def test_jfr_streaming_parser_rejects_truncation_and_oversized_events(self):
+        events = [{"type": "jdk.CPULoad", "values": {}}, {"type": "jdk.ExecutionSample", "values": {}}]
+        self.assertEqual(events, list(report.iter_events(io.StringIO(json.dumps({"recording": {"events": events}})))))
+        with self.assertRaises(ValueError):
+            list(report.iter_events(io.StringIO('{"recording":{"events":[{"type":')))
+        with self.assertRaises(ValueError):
+            list(report.iter_events(io.StringIO('{}')))
+        with self.assertRaisesRegex(ValueError, "parser budget"):
+            list(report.iter_events(io.StringIO(json.dumps({"recording": {"events": [{"value": "x" * 200_000}]}})), 100_000))
+
     def test_partial_matrix_cannot_be_presented_as_complete_evidence(self):
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaisesRegex(ValueError, "all three rates"):
@@ -85,12 +96,15 @@ class CapacityReporting(unittest.TestCase):
                     for phase in ("spool-baseline", "acknowledged", "acknowledged-profiled"):
                         directory = case / phase
                         directory.mkdir()
-                        load = {**self.load, "generator": {"scheduled_duration_s": 600},
+                        count = rate * 600
+                        load = {**self.load, "generator": {"scheduled_duration_s": 600, "rate_per_s": rate},
+                            "scheduled": count, "outcomes": {"202": count},
+                            "accepted_reconciliation": {"accepted": count, "visible": count, "unresolved_ids": [], "passed": True},
                             "working_tree_dirty": False, "revision": "current", "acknowledged_per_s_including_inflight_drain": rate,
                             "successful_http_elapsed": {"p99_ms": 10}, "ambiguous_client_outcomes": {"count": 0}}
                         value = {"rate": rate, "repeat": repeat, "phase": phase, "capacity_eligible": True,
-                            "source_revision": "current", "load": load, "budget_passed": rate != 150,
-                            "budget": {}, "source_lag_records": {}, "buffer_records": {}, "resources": {}, "workload": {}}
+                            "source_revision": report.BASELINE_REVISION if phase == "spool-baseline" else "current", "load": load, "budget_passed": rate != 150,
+                            "budget": {"workload": rate != 150}, "source_lag_records": {}, "buffer_records": {}, "resources": {}, "workload": {}}
                         if phase == "acknowledged-profiled":
                             value["jfr"] = {"collector": {}, "worker": {}}
                             for role in ("collector", "worker"):
@@ -100,6 +114,7 @@ class CapacityReporting(unittest.TestCase):
             path = root / "50-2/acknowledged/report.json"
             value = json.loads(path.read_text())
             value["budget_passed"] = False
+            value["budget"]["workload"] = False
             path.write_text(json.dumps(value))
             self.assertEqual(10, report.aggregate(root)["highest_passing_tested_offered_rate"])
             value["load"]["revision"] = "different"
