@@ -83,8 +83,9 @@ one synthetic tenant, 64 bounded client slots and 10% trace sampling. The harnes
 records exact source/image identities, host CPU/memory, filesystem observations,
 raw request outcomes/timestamps, acknowledged-ID reconciliation, live source lag,
 buffer occupancy, CPU/memory and container restarts. A persistent Java admin
-observer samples offsets once per second; Docker and HTTP snapshots run every
-five seconds. The generator and observers share the runner with the services.
+observer reads committed offsets before log ends once per second, so the
+non-atomic lag observation includes the interval between those reads. Docker and
+HTTP snapshots run every five seconds. The generator and observers share the runner with the services.
 
 The stated workload budgets are at least 99% offered-to-202 success, scheduled
 response p99 <= 1000 ms, generator-delay p99 <= 50 ms, observed source lag <= two
