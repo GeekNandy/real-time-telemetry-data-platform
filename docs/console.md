@@ -42,9 +42,9 @@ initialized Grafana database; use Grafana's supported password-reset workflow.
 | Event inspector | Retrieve one event using the JWT's verified tenant and read scope |
 | Diagnostics | Open provisioned dashboards, metrics queries and distributed traces |
 
-An acceptance receipt proves a synchronized local-volume append. A matching
+An acceptance receipt proves Kafka publication and a durable delivery checkpoint. A matching
 worker response proves query visibility through the PostgreSQL-backed store.
-Kafka acknowledgement is not exposed as a per-event UI milestone. Application
+The receipt carries the acknowledged Kafka topic, partition and offset. Application
 readiness does not establish broker health or high availability. A transient 404
 after acceptance is displayed as pending, not as confirmed loss.
 

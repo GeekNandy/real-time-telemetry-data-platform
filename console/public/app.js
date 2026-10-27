@@ -174,7 +174,7 @@ async function refresh() {
     const rate = acceptedRate(previous, sample); previous = sample;
     samples.push({ at: sampledAt, value: rate }); samples = samples.filter(item => item.at >= sampledAt - 300000).slice(-61);
     $('accepted-rate').textContent = format(rate, 'rate');
-    $('accepted-note').textContent = rate === null ? 'Waiting for two live samples' : 'Observed local acceptance rate';
+    $('accepted-note').textContent = rate === null ? 'Waiting for two live samples' : 'Observed acknowledged event rate';
     $('buffer-records').textContent = format(collector?.bufferRecords);
     $('buffer-bytes').textContent = format(collector?.bufferBytes, 'bytes');
     $('buffer-age').textContent = format(collector?.oldestBufferedAgeSeconds, 'seconds');

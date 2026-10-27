@@ -90,12 +90,18 @@ class CollectorContractIT {
                   .statusCode());
 
           infrastructure.stopBroker();
-          Set<UUID> accepted = new HashSet<>();
+          Set<UUID> unconfirmed = new HashSet<>();
           for (int i = 0; i < 8; i++) {
             UUID id = UUID.randomUUID();
-            var acceptedResponse = post(id, token, null);
-            assertEquals(202, acceptedResponse.statusCode(), acceptedResponse.body());
-            accepted.add(id);
+            var responseWithoutAcknowledgement = post(id, token, null);
+            assertEquals(
+                503,
+                responseWithoutAcknowledgement.statusCode(),
+                responseWithoutAcknowledgement.body());
+            assertEquals(
+                "1",
+                responseWithoutAcknowledgement.headers().firstValue("Retry-After").orElseThrow());
+            unconfirmed.add(id);
           }
           assertEquals(8, pendingFiles());
           assertEquals(
@@ -118,13 +124,13 @@ class CollectorContractIT {
                     () -> {
                       for (var record : recoveryConsumer.poll(Duration.ofMillis(200))) {
                         UUID id = codec.decode(record.value()).eventId();
-                        if (accepted.contains(id)) replayed.add(id);
+                        if (unconfirmed.contains(id)) replayed.add(id);
                       }
-                      return replayed.equals(accepted);
+                      return replayed.equals(unconfirmed);
                     });
           }
           await().atMost(Duration.ofSeconds(10)).until(() -> pendingFiles() == 0);
-          assertEquals(accepted, replayed);
+          assertEquals(unconfirmed, replayed);
         }
       } finally {
         stopCollector();
@@ -151,6 +157,7 @@ class CollectorContractIT {
                 "--telemetry.buffer.path=" + work.resolve("wal"),
                 "--telemetry.buffer.max-records=8",
                 "--telemetry.buffer.max-bytes=1048576",
+                "--telemetry.acceptance-deadline-ms=3000",
                 "--telemetry.security.mode=demo",
                 "--telemetry.security.issuer=" + TestTokens.ISSUER,
                 "--telemetry.security.demo-secret=" + TestTokens.SECRET,

@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 telemetry_project="telemetry-compose-ci-${RANDOM}"
 telemetry_reports="${TELEMETRY_COMPOSE_REPORTS:-data/compose-smoke}"
 telemetry_secrets="$(mktemp -d)"
-telemetry_compose=(docker compose -p "$telemetry_project" --env-file "$telemetry_secrets/env" --profile console --profile observability)
+telemetry_compose=(docker compose -f compose.yaml -f compose.replicated.yaml -p "$telemetry_project" --env-file "$telemetry_secrets/env" --profile console --profile observability)
 mkdir -p "$telemetry_reports"
 cleanup() {
   if [ -f "$telemetry_secrets/env" ]; then

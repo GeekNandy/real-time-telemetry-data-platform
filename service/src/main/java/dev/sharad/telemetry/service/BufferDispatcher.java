@@ -1,6 +1,7 @@
 package dev.sharad.telemetry.service;
 
 import dev.sharad.telemetry.buffer.DiskBuffer;
+import dev.sharad.telemetry.core.DurableLog;
 import dev.sharad.telemetry.observability.PlatformTelemetry;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -18,6 +19,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 /** One ordered dispatcher per exclusive volume; failure leaves the head available for replay. */
 public final class BufferDispatcher implements SmartLifecycle {
   private final DiskBuffer buffer;
+  private final KafkaAcceptance acceptance;
   private final KafkaTemplate<String, byte[]> kafka;
   private final PlatformTelemetry telemetry;
   private final String topic;
@@ -28,11 +30,13 @@ public final class BufferDispatcher implements SmartLifecycle {
 
   public BufferDispatcher(
       DiskBuffer buffer,
+      KafkaAcceptance acceptance,
       KafkaTemplate<String, byte[]> kafka,
       PlatformTelemetry telemetry,
       String topic,
       MeterRegistry meters) {
     this.buffer = buffer;
+    this.acceptance = acceptance;
     this.kafka = kafka;
     this.telemetry = telemetry;
     this.topic = topic;
@@ -77,10 +81,12 @@ public final class BufferDispatcher implements SmartLifecycle {
             .inject(span)
             .forEach(
                 (key, value) -> record.headers().add(key, value.getBytes(StandardCharsets.UTF_8)));
-        kafka.send(record).get(10, TimeUnit.SECONDS);
+        var metadata = kafka.send(record).get(10, TimeUnit.SECONDS).getRecordMetadata();
         // A timeout never advances the checkpoint. The retry may append a duplicate, which the sink
         // handles.
-        buffer.acknowledge(entry.sequence());
+        acceptance.confirm(
+            entry.sequence(),
+            new DurableLog.Position(metadata.topic(), metadata.partition(), metadata.offset()));
         delivered.increment();
         success = true;
         failures = 0;

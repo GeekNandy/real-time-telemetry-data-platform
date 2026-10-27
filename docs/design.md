@@ -2,9 +2,14 @@
 
 ## Boundaries
 
-The collector accepts an event after durable local append. The dispatcher
-publishes in volume order, waits for Kafka's configured acknowledgement policy,
-and only then persists a delivered checkpoint and reclaims the spool entry.
+The collector first appends to its durable spool. The dispatcher publishes in
+volume order, waits for Kafka acknowledgement, and persists a delivered checkpoint
+before completing the HTTP 202 response with the actual Kafka topic/partition/offset.
+The replicated reference requires three broker replicas, `acks=all`, producer
+idempotence, minISR 2 and disabled unclean leader election. Startup verifies the
+effective producer settings and every topic partition/configuration before HTTP
+starts. The single-broker development configuration has the same acknowledgement
+boundary but does not provide replicated durability.
 The worker commits a source offset after a PostgreSQL transaction, or after
 confirmed dead-letter publication for a non-retryable record.
 
@@ -15,7 +20,7 @@ collector filesystem, Kafka and PostgreSQL.
 
 Each private volume has one process owner enforced by a file lock. An append
 writes a bounded frame to a temporary file, synchronizes the file, atomically
-renames it and synchronizes the directory before returning acceptance.
+renames it and synchronizes the directory before waiting for publication.
 
 Frames and delivered checkpoints are checksummed. Recovery validates committed
 entries, removes incomplete temporary files, and fails closed on corrupted
@@ -37,14 +42,15 @@ provision volume headroom for metadata, temporary files and filesystem reserves.
 
 | Failure | Intended behavior |
 | --- | --- |
-| HTTP response is lost after durable append | Client retries the same ID; downstream storage deduplicates |
+| HTTP response is lost or publication exceeds the response deadline | Outcome is ambiguous; retry the same tenant/ID/content, and downstream storage deduplicates |
 | Collector process is killed | Retained volume is scanned and pending entries replay |
-| Kafka is unavailable | Collector continues until its disk budget is exhausted, then rejects new events |
+| Kafka is unavailable or ISR is insufficient | No HTTP 202; return retryable 503 at the acknowledgement deadline, retain spool records and retry publication within bounded budgets |
 | PostgreSQL is unavailable | Kafka offsets remain uncommitted; the worker retries |
 | Worker commits the database and dies before offset commit | Redelivery finds the same fingerprint and produces no second row |
 | DLT publication fails | Recovery must fail and the source offset remain uncommitted |
 | Committed spool/checkpoint is corrupted | Fail closed and retain the data for investigation |
-| Collector volume is permanently lost before Kafka acknowledgement | Accepted data can be lost; this implementation has no collector-volume replication |
+| Collector volume is lost before Kafka acknowledgement | Unconfirmed work may be lost; it has not received HTTP 202 |
+| Collector volume is lost after HTTP 202 | The accepted record is already in Kafka under the verified acknowledgement/replication policy |
 | Outage exceeds Kafka retention | Unprocessed records can expire; capacity and retention need an operational budget |
 
 An encrypted, persistent EBS-backed PVC can protect against ordinary pod/node
@@ -70,15 +76,26 @@ Deduplication is bounded by retention of the stored identity/fingerprint.
 
 One monitor atomically updates global and tenant occupancy. Only active tenants
 are retained. A bounded executor isolates filesystem work from the event loop;
-queued work has a start deadline. Cancellation of the HTTP subscriber cannot
-cancel a real append or release its permit prematurely.
+queued work has a start deadline. A separate acknowledgement deadline defaults to
+five seconds from spool append start. Timeout settles only the bounded response
+waiter; it never deletes durable work. Admission stays occupied until confirmation
+or that deadline. Cancellation of an HTTP subscriber cannot cancel the underlying
+append/publication or release its permit prematurely. Filesystem stalls can delay
+the append itself; the protocol does not turn an uninterruptible fsync into a hard
+wall-clock bound.
+
+Waiter registration and checkpoint confirmation share a monitor so fast publication
+cannot overtake registration. One removable timer per waiter is bounded by global
+admission capacity. Subscriber callbacks run outside that monitor. Recovery needs
+no HTTP waiter; the spool is independently bounded by its encoded byte and record
+budgets, and one ordered dispatcher retries its head with capped backoff.
 
 Immutable records and copied maps cross the executor boundary. Monitor release/
 acquisition, executor queue publication, atomic settlement and future completion
 provide the required visibility. Completion callbacks run outside the admission
 monitor. Counter snapshots are operational observations, not an atomic audit ledger.
 
-The per-tenant limit bounds simultaneous appends; it is not a requests-per-second
+The per-tenant limit bounds requests awaiting acknowledgement; it is not a requests-per-second
 limiter or a reservation of persistent backlog space. Gateway rate limits and
 tenant backlog quotas are separate controls.
 

@@ -26,24 +26,36 @@ final class LocalBrokerRegistry implements AutoCloseable {
   final Path directory;
   final int registryPort;
   private final Path properties;
+  private final int replicas;
+  private final int minimum;
   private Process registry;
 
   LocalBrokerRegistry() throws Exception {
+    this(1);
+  }
+
+  LocalBrokerRegistry(int brokers) throws Exception {
+    if (brokers != 1 && brokers != 3) throw new IllegalArgumentException("Reference broker count");
+    replicas = brokers;
+    minimum = brokers == 3 ? 2 : 1;
     directory = Files.createTempDirectory("telemetry-real-registry-");
     registryPort = freePort();
     var nodes =
         new TestKitNodes.Builder()
             .setCombined(false)
-            .setNumBrokerNodes(1)
+            .setNumBrokerNodes(brokers)
             .setNumControllerNodes(1)
             .setBootstrapMetadataVersion(
                 org.apache.kafka.server.common.MetadataVersion.latestProduction())
             .build();
     broker =
         new KafkaClusterTestKit.Builder(nodes)
-            .setConfigProp("offsets.topic.replication.factor", "1")
-            .setConfigProp("transaction.state.log.replication.factor", "1")
-            .setConfigProp("transaction.state.log.min.isr", "1")
+            .setConfigProp("offsets.topic.replication.factor", Integer.toString(replicas))
+            .setConfigProp("transaction.state.log.replication.factor", Integer.toString(replicas))
+            .setConfigProp("transaction.state.log.min.isr", Integer.toString(minimum))
+            .setConfigProp("min.insync.replicas", Integer.toString(minimum))
+            .setConfigProp("unclean.leader.election.enable", "false")
+            .setConfigProp("replica.lag.time.max.ms", "3000")
             .setConfigProp("group.initial.rebalance.delay.ms", "0")
             .setConfigProp("controlled.shutdown.enable", "false")
             .build();
@@ -56,8 +68,8 @@ final class LocalBrokerRegistry implements AutoCloseable {
         admin
             .createTopics(
                 java.util.List.of(
-                    new NewTopic("telemetry.events.v1", 3, (short) 1),
-                    new NewTopic("telemetry.events.v1.dlt", 3, (short) 1)))
+                    new NewTopic("telemetry.events.v1", 3, (short) replicas),
+                    new NewTopic("telemetry.events.v1.dlt", 3, (short) replicas)))
             .all()
             .get(20, TimeUnit.SECONDS);
       }
@@ -92,7 +104,9 @@ final class LocalBrokerRegistry implements AutoCloseable {
             + "kafkastore.bootstrap.servers=PLAINTEXT://"
             + broker.bootstrapServers()
             + "\n"
-            + "kafkastore.topic.replication.factor=1\n"
+            + "kafkastore.topic.replication.factor="
+            + replicas
+            + "\n"
             + "schema.compatibility.level=FULL_TRANSITIVE\n");
     Path classpath =
         Path.of(

@@ -118,6 +118,7 @@ class PlatformIT {
     properties.add("telemetry.schema.allow-registration", () -> true);
     properties.add("telemetry.buffer.path", BUFFER::toString);
     properties.add("telemetry.buffer.max-records", () -> 8);
+    properties.add("telemetry.acceptance-deadline-ms", () -> 3000);
     properties.add("telemetry.retention.sweep-ms", () -> 3600000);
     properties.add("telemetry.security.mode", () -> "demo");
     properties.add("telemetry.security.issuer", () -> TestTokens.ISSUER);
@@ -315,16 +316,16 @@ class PlatformIT {
 
   @Test
   @Order(9)
-  void brokerOutageUsesTheDurableBudgetAndRecoversWithoutLosingAcceptedIds() throws Exception {
+  void brokerOutageCannotReturn202AndUnconfirmedRetriesAreDeduplicated() throws Exception {
     awaitDrained();
     awaitAllSourceCommitted();
-    var accepted = new HashSet<UUID>();
+    var unconfirmed = new java.util.ArrayList<Event>();
     KAFKA.getDockerClient().pauseContainerCmd(KAFKA.getContainerId()).exec();
     try {
       for (int index = 0; index < 8; index++) {
         var event = event("broker-outage");
-        assertEquals(202, post(event).statusCode());
-        accepted.add(event.eventId());
+        assertEquals(503, post(event).statusCode());
+        unconfirmed.add(event);
       }
       assertEquals(8, buffer.snapshot().records());
       var rejected = post(event("broker-outage"));
@@ -333,6 +334,8 @@ class PlatformIT {
     } finally {
       KAFKA.getDockerClient().unpauseContainerCmd(KAFKA.getContainerId()).exec();
     }
+    awaitDrained();
+    for (var event : unconfirmed) assertEquals(202, post(event).statusCode());
     await()
         .atMost(Duration.ofSeconds(40))
         .untilAsserted(
@@ -342,11 +345,41 @@ class PlatformIT {
                       "SELECT event_id FROM telemetry_events WHERE tenant_id=?",
                       (row, index) -> row.getObject(1, UUID.class),
                       "broker-outage");
-              assertEquals(accepted.size(), stored.size());
-              assertEquals(accepted, new HashSet<>(stored));
+              assertEquals(unconfirmed.size(), stored.size());
+              assertEquals(
+                  unconfirmed.stream()
+                      .map(Event::eventId)
+                      .collect(java.util.stream.Collectors.toSet()),
+                  new HashSet<>(stored));
             });
     awaitDrained();
     awaitAllSourceCommitted();
+  }
+
+  @Test
+  @Order(10)
+  void delayedAcknowledgementKeepsTheHttpResponsePending() throws Exception {
+    awaitDrained();
+    var event = event("delayed-ack");
+    KAFKA.getDockerClient().pauseContainerCmd(KAFKA.getContainerId()).exec();
+    java.util.concurrent.CompletableFuture<HttpResponse<String>> response;
+    try {
+      var request =
+          HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/v1/events"))
+              .timeout(Duration.ofSeconds(15))
+              .header("Content-Type", "application/json")
+              .header("Authorization", "Bearer " + TestTokens.tenant(event.tenantId()))
+              .POST(HttpRequest.BodyPublishers.ofString(body(event)))
+              .build();
+      response = http.sendAsync(request, HttpResponse.BodyHandlers.ofString());
+      await().atMost(Duration.ofSeconds(2)).until(() -> buffer.snapshot().records() == 1);
+      assertFalse(response.isDone(), "Local append must not complete HTTP acceptance");
+    } finally {
+      KAFKA.getDockerClient().unpauseContainerCmd(KAFKA.getContainerId()).exec();
+    }
+    assertEquals(202, response.get(10, TimeUnit.SECONDS).statusCode());
+    awaitAllSourceCommitted();
+    assertEquals(1, rows(event));
   }
 
   @Test

@@ -22,11 +22,23 @@ scopes are enforced by the backend. Aggregate metrics are platform-wide.
 
 Run `./scripts/demo-event.sh`; retrieve its ID from the worker using the token
 from `python3 scripts/demo-token.py --tenant demo`. A 202 response means the
-collector synced its persistent volume. It does not mean PostgreSQL is already
+broker acknowledged publication and the collector checkpointed delivery. It does not mean PostgreSQL is already
 queryable. Query 404 can be transient immediately after acceptance.
 
+To run the three-broker reference on a fresh set of volumes, stop the single-broker
+demo and run:
+
+```bash
+./scripts/dev-up.sh -p telemetry-replicated -f compose.yaml -f compose.replicated.yaml
+```
+
+This uses RF 3, minISR 2 and `acks=all`. Both application roles verify the effective
+producer and actual topic policy at startup. Keep that policy under administrative
+access control; changing it after verification changes the fault assumptions. The
+reference has one controller and does not establish controller-quorum or AZ HA.
+
 `docker compose stop` retains state. `docker compose down -v` destroys all local
-volumes, including potentially acknowledged buffered events; use it only when
+volumes, including Kafka's accepted records and unconfirmed spool entries; use it only when
 that data can be discarded. Demo credentials and bearer tokens must never be
 committed. The issuer and HS256 mode are explicitly for local development.
 
@@ -36,8 +48,11 @@ Watch `telemetry_buffer_records`, `telemetry_buffer_bytes`,
 `telemetry_buffer_oldest_age` (seconds) and dispatch failures. Inspect broker
 leaders, ISR and producer errors. A blocked dispatcher retains its head record;
 confirmed Kafka publication precedes checkpoint advancement and reclamation.
-The HTTP service continues accepting until its configured volume or record
-budget is exhausted, then returns 503 with `Retry-After`. Transient concurrent
+Requests wait up to `ACCEPTANCE_DEADLINE_MS` (default 5000, maximum 30000) from spool
+append start for confirmed publication/checkpointing. Unconfirmed requests receive
+503 with `Retry-After`; their buffered records remain eligible for later delivery.
+No 202 is returned during a broker outage or insufficient ISR. The volume or record
+budget can also reject with 503 before the deadline. Transient concurrent
 admission exhaustion returns 429. Retry with the same event ID and identical
 content. A timeout or 503 may be ambiguous; never generate a replacement ID.
 
@@ -47,7 +62,9 @@ scale a collector onto an empty volume to make an alert disappear. Graceful
 shutdown leaves unpublished records on its retained volume. If a volume is
 corrupt, preserve a snapshot, stop its owner, reconcile accepted IDs against
 Kafka/PostgreSQL and investigate the failed checksum before attempting recovery.
-There is no automatic repair that can prove the contents of a lost volume.
+There is no automatic repair that can prove unconfirmed contents of a lost volume.
+Records that received 202 already exist in Kafka; preserve its replicas and reconcile
+against Kafka/PostgreSQL after replacing a collector volume.
 
 The replica test covers data-plane leader failure and loss of minISR. It has one
 controller and does not establish controller-quorum or availability-zone HA.

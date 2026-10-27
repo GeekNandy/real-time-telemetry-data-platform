@@ -15,6 +15,7 @@ import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
 import io.opentelemetry.sdk.trace.samplers.Sampler;
 import java.net.URI;
 import java.time.Duration;
+import java.util.List;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.common.config.TopicConfig;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,12 +23,35 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.codec.ServerCodecConfigurer;
 import org.springframework.kafka.config.TopicBuilder;
+import org.springframework.kafka.core.KafkaAdmin;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.web.reactive.config.WebFluxConfigurer;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 
 @Configuration
 public class RuntimeConfiguration {
+  @Bean
+  KafkaAcceptancePolicy kafkaAcceptancePolicy(
+      KafkaAdmin admin,
+      KafkaTemplate<String, byte[]> kafka,
+      org.springframework.core.env.Environment environment,
+      @Value("${telemetry.topic}") String events,
+      @Value("${telemetry.dead-letter-topic}") String deadLetters,
+      @Value("${telemetry.replication-factor}") int replicas,
+      @Value("${telemetry.min-in-sync-replicas}") int minimum) {
+    boolean replicated =
+        environment.acceptsProfiles(org.springframework.core.env.Profiles.of("replicated"))
+            || "production".equals(environment.getProperty("telemetry.deployment"));
+    return new KafkaAcceptancePolicy(
+        admin,
+        kafka.getProducerFactory().getConfigurationProperties(),
+        List.of(events, deadLetters),
+        replicas,
+        minimum,
+        replicated);
+  }
+
   @Bean
   static org.springframework.beans.factory.config.BeanFactoryPostProcessor productionPolicy(
       org.springframework.core.env.Environment environment) {
