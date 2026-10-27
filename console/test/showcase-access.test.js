@@ -29,7 +29,8 @@ const sessionCookie = response => response.headers.get('set-cookie').split(';')[
 
 test('access configuration fails closed, including missing, duplicate and plaintext credentials', async () => {
   for (const value of [undefined, '', '[]', '{}', '[null]', JSON.stringify([records[0], records[0]]),
-    JSON.stringify([{ ...records[0], password }]), JSON.stringify([{ ...records[0], hash: 'invalid' }])]) {
+    JSON.stringify([{ ...records[0], password }]), JSON.stringify([{ ...records[0], username: null }]),
+    JSON.stringify([{ ...records[0], username: true }]), JSON.stringify([{ ...records[0], hash: 'invalid' }])]) {
     assert.throws(() => parseUsers(value), /Invalid review access configuration/);
   }
   await assert.rejects(protectedServer(), /Invalid review access configuration/);

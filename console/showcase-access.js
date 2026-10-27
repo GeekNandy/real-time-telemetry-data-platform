@@ -8,7 +8,8 @@ export const sessionLifetimeMs = 8 * 60 * 60 * 1000;
 export const cookieName = '__Host-telemetry-review';
 
 export async function credentialRecord(username, password) {
-  if (!usernamePattern.test(username) || Buffer.byteLength(password) < 16 || Buffer.byteLength(password) > 128) {
+  if (typeof username !== 'string' || !usernamePattern.test(username) || typeof password !== 'string' ||
+      Buffer.byteLength(password) < 16 || Buffer.byteLength(password) > 128) {
     throw new Error('Invalid review credential input.');
   }
   const salt = randomBytes(16);
@@ -23,7 +24,7 @@ export function parseUsers(value) {
   const users = new Map();
   for (const row of rows) {
     if (!row || typeof row !== 'object' || Object.keys(row).sort().join(',') !== 'hash,salt,username' ||
-        !usernamePattern.test(row.username) || typeof row.salt !== 'string' || !/^[a-f0-9]{32}$/.test(row.salt) ||
+        typeof row.username !== 'string' || !usernamePattern.test(row.username) || typeof row.salt !== 'string' || !/^[a-f0-9]{32}$/.test(row.salt) ||
         typeof row.hash !== 'string' || !/^[a-f0-9]{64}$/.test(row.hash) || users.has(row.username)) {
       throw new Error('Invalid review access configuration.');
     }
