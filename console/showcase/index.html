@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark">
   <meta name="description" content="Explore a verified Java telemetry pipeline run, from durable acceptance to matching PostgreSQL queries.">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
-  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; object-src 'none'">
+  <meta name="referrer" content="same-origin">
   <title>Telemetry · Run Explorer</title>
   <link rel="icon" href="./mark.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./base.css">
@@ -27,7 +27,7 @@
     <div class="sidebar-bottom"><span class="environment"><span class="dot"></span> RECORDED VERIFICATION</span><p>Java 21 · Spring WebFlux<br>Kafka · Avro · PostgreSQL</p><a href="https://github.com/GeekNandy/real-time-telemetry-data-platform" target="_blank" rel="noopener noreferrer">Source &amp; documentation ↗</a></div>
   </aside>
   <div class="workspace">
-    <header class="topbar"><span class="breadcrumb">Platform <span>/</span> Run explorer</span><div class="topbar-actions"><span class="badge warn">Recorded run · 27 Oct 2026</span><a class="button small" href="https://github.com/GeekNandy/real-time-telemetry-data-platform" target="_blank" rel="noopener noreferrer">View source ↗</a></div></header>
+    <header class="topbar"><span class="breadcrumb">Platform <span>/</span> Run explorer</span><div class="topbar-actions"><span class="badge warn">Recorded run · 27 Oct 2026</span><!-- access-controls --><a class="button small" href="https://github.com/GeekNandy/real-time-telemetry-data-platform" target="_blank" rel="noopener noreferrer">View source ↗</a></div></header>
     <main id="main" tabindex="-1">
       <noscript><p>This explorer needs JavaScript. <a href="https://github.com/GeekNandy/real-time-telemetry-data-platform/actions/runs/40512112182">Open the original verification run.</a></p></noscript>
       <div id="load-error" class="notice bad" role="alert" hidden></div>

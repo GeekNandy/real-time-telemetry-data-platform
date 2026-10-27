@@ -24,6 +24,8 @@ jobs:
         run: npm --prefix console run test:browser
       - name: Verify the recorded-run explorer in a real browser
         run: npm --prefix console run test:showcase
+      - name: Verify protected access, private sessions and logout in desktop and mobile browsers
+        run: npm --prefix console run test:access
       - name: Collect browser reports and fixture screenshots
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

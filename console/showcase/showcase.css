@@ -29,3 +29,5 @@ select{background:var(--surface);color:var(--text);border:1px solid #45513b;bord
 #load-error{margin:0 0 20px}
 @media(max-width:1100px){.event-layout{grid-template-columns:1fr}.event-table th,.event-table td{padding:11px 14px}}
 @media(max-width:720px){.recording-bar{align-items:flex-start;flex-direction:column}.recording-bar label{width:100%;justify-content:space-between}.topbar-actions .badge{font-size:8px}.topbar-actions{flex-wrap:wrap;justify-content:flex-end}.chart-control{flex-direction:column;align-items:flex-end}.event-table th,.event-table td{padding:11px 10px}.launch-command code{font-size:10px}.page-footer span{overflow-wrap:anywhere}}
+.access-controls{margin:0}
+.access-controls button{cursor:pointer}
