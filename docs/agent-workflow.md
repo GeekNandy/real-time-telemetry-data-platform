@@ -1,27 +1,19 @@
 # Agent-assisted development
 
-AI assistance was used to implement and iteratively test this reference platform.
-The scope is tracked in repository issue #1 and the requirement-to-evidence map.
-The owner remains responsible for understanding the code and its claims.
+AI assistance is used for scoped implementation and verification tasks.
+Maintainers are responsible for the code, review decisions and published claims.
 
-The actual cycle was: establish the acceptance/fault model, implement bounded
-contracts, run unit checks, exercise real dependency/process failures, fix the
-observed failures and preserve the final outcomes. In particular, packaged HTTP
-execution and separate broker/controller tests were required before treating a
-successful Maven package as evidence of a working runtime.
+1. Define the behavior, acceptance boundary and failure cases.
+2. Implement the change on a feature branch with bounded resource use and relevant tests.
+3. Run unit and contract checks, then the required integration and deployment gates.
+4. Record commands, source revisions, environments and observed outcomes.
+5. Open a PR covering the resulting behavior, verification and operational implications.
 
-Changes are introduced through feature branches and merged PRs. Tests and
-documentation must report unavailable runtimes as pending, preserve useful
-failures and avoid manufactured performance numbers. CI has read-only repository
-permissions and does not deploy to AWS.
-Review changes against AGENTS.md, the issue gates and production guardrails.
+Follow the [working agreement](../AGENTS.md), [contribution workflow](../CONTRIBUTING.md)
+and [technical review guide](review-guide.md). A successful package build verifies
+packaging; runtime behavior requires the relevant process and dependency checks.
 
-Human code review and independent approval remain pending. A self-review, AI
-critique, PR template or green unit suite is not independent peer approval. Do
-not manufacture review comments or describe this project as production on-call
-experience. When a PR is available, include the acceptance boundary, observed
-checks, unresolved gates and operational implications in its description.
-
-The owner authorized eight sequential merges after their checks passed. The
-original broad foundation is retained in PR #2 and superseded by the smaller
-review sequence. Owner merge authorization is not independent peer approval.
+CI has read-only repository permissions and does not deploy to AWS.
+[Verification records](verification.md) identify the tested revisions and the
+scope of each result. Report unavailable checks as pending and distinguish
+correctness checks from capacity measurements.

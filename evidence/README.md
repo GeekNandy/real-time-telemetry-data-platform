@@ -1,10 +1,15 @@
 # Verification records
 
-review-sequence.json records the actual sequential PR source revisions, merge
-revisions, equal source trees and passing CI runs completed before the final
-tooling PR. The final PR's checks and artifacts record its execution separately.
+Each record identifies its tested source revision, observation date and execution scope.
 
-The other files are immutable historical evidence from the original foundation
-in PR #2, including its original local and published revisions. They are retained
-for provenance and are not relabeled as results for the new sequence or bug fixes.
-Historical component results and twenty-event smokes are not capacity measurements.
+| Record | Contents |
+| --- | --- |
+| [verification-runs.json](verification-runs.json) | Selected passing CI runs with tested source revisions and available merge metadata |
+| [ci-2026-10-26.json](ci-2026-10-26.json) | Dated CI job outcomes, reconciliation results and artifact identifiers |
+| [verification.json](verification.json) | Dated local test results and toolchain versions |
+| [published-source.json](published-source.json) | Local-to-published revision mappings for archived results |
+| Text and JSONL reports | Captured contract, schema and synthetic request outcomes |
+
+Read each result against its recorded revision and environment.
+Component tests and twenty-event correctness smokes do not establish pipeline
+capacity. See [verification evidence](../docs/verification.md) for the gate descriptions.

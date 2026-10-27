@@ -4,14 +4,21 @@
 
 Use Java 21, Python3, Docker Engine and Compose v2. Run `./scripts/dev-up.sh` from
 the repository root. It generates ignored local credentials, starts dependencies
-and waits for both application readiness endpoints. Add `--profile observability`
-to start Prometheus. The demo has one Kafka broker and local volumes; it is not HA.
+and waits for both application readiness endpoints. It enables the console and
+observability profiles, including Grafana and Prometheus. The demo has one Kafka
+broker and local volumes; it is not HA.
 
 - Collector HTTP: `http://127.0.0.1:8080`.
 - Worker queries: `http://127.0.0.1:8082`.
 - Schema Registry: `http://127.0.0.1:8081`.
 - Jaeger traces: `http://127.0.0.1:16686` (transient in-memory storage).
 - Optional Prometheus: `http://127.0.0.1:9090`.
+- Operator console: `http://127.0.0.1:8088`.
+- Provisioned Grafana: `http://127.0.0.1:3000`.
+
+See [the console guide](console.md) for generated credentials and the interactive
+event workflow. The console uses explicit bearer tokens; event and observer
+scopes are enforced by the backend. Aggregate metrics are platform-wide.
 
 Run `./scripts/demo-event.sh`; retrieve its ID from the worker using the token
 from `python3 scripts/demo-token.py --tenant demo`. A 202 response means the
@@ -91,8 +98,10 @@ that expires after one hour. Refresh it by rerunning `dev-up.sh`; production
 scrapers require issuer-supported token rotation. A scrape failure may indicate
 token expiry rather than an application outage.
 
-Import `deploy/observability/dashboard.json` into Grafana with a Prometheus data
-source. The alert rules are starting thresholds for the demo, not measured SLOs.
+The observability profile provisions `deploy/observability/dashboard.json` with
+the fixed `telemetry-prometheus` datasource UID. Grafana requires the generated
+administrator credentials; anonymous access is disabled. The alert rules are
+starting thresholds for the demo, not measured SLOs.
 They need routing and workload-specific tuning before operational use.
 
 ## Kubernetes rollout and production transport

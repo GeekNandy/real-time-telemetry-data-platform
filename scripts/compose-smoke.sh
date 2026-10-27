@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 telemetry_project="telemetry-compose-ci-${RANDOM}"
 telemetry_reports="${TELEMETRY_COMPOSE_REPORTS:-data/compose-smoke}"
 telemetry_secrets="$(mktemp -d)"
-telemetry_compose=(docker compose -p "$telemetry_project" --env-file "$telemetry_secrets/env")
+telemetry_compose=(docker compose -p "$telemetry_project" --env-file "$telemetry_secrets/env" --profile console --profile observability)
 mkdir -p "$telemetry_reports"
 cleanup() {
   if [ -f "$telemetry_secrets/env" ]; then
@@ -21,23 +21,20 @@ from pathlib import Path
 import secrets,sys
 p=Path(sys.argv[1])
 key=secrets.token_hex(32)
-for name,value in {'key':key,'env':'DEMO_JWT_SECRET='+key+'\nDATABASE_PASSWORD='+secrets.token_hex(24)+'\n'}.items():
+(p/'auth').mkdir(mode=0o700)
+for name,value in {'key':key,'env':'DEMO_JWT_SECRET='+key+'\nDATABASE_PASSWORD='+secrets.token_hex(24)+'\nTELEMETRY_AUTH_DIR='+str(p/'auth')+'\n'}.items():
  f=p/name;f.write_text(value);f.chmod(0o600)
+password=p/'auth/grafana-admin-password';password.write_text(secrets.token_urlsafe(24));password.chmod(0o644)
 PY_SECRET
+python3 scripts/demo-token.py --env-file "$telemetry_secrets/env" --observe > "$telemetry_secrets/auth/observe.token"
+chmod 644 "$telemetry_secrets/auth/observe.token"
 "${telemetry_compose[@]}" up -d --build
 python3 scripts/wait-ready.py
 telemetry_wal_permissions="$("${telemetry_compose[@]}" exec -T collector stat -c '%u:%g %a' /app/data/wal)"
 printf '%s\n' "$telemetry_wal_permissions" > "$telemetry_reports/wal-permissions.txt"
 [ "$telemetry_wal_permissions" = "10001:10001 700" ]
-python3 - "$telemetry_secrets/key" "$telemetry_secrets/token" <<'PY_TOKEN'
-from pathlib import Path
-import base64,hashlib,hmac,json,sys,time
-def enc(value):return base64.urlsafe_b64encode(json.dumps(value,separators=(',',':')).encode()).decode().rstrip('=')
-now=int(time.time())
-message=enc({'alg':'HS256','typ':'JWT'})+'.'+enc({'iss':'http://localhost:8080','aud':['telemetry'],'sub':'compose-ci','tenant_id':'compose-ci','scope':'telemetry.write telemetry.read','iat':now,'exp':now+600})
-token=message+'.'+base64.urlsafe_b64encode(hmac.new(Path(sys.argv[1]).read_bytes(),message.encode(),hashlib.sha256).digest()).decode().rstrip('=')
-target=Path(sys.argv[2]);target.write_text(token);target.chmod(0o600)
-PY_TOKEN
+python3 scripts/demo-token.py --env-file "$telemetry_secrets/env" --tenant compose-ci --console > "$telemetry_secrets/token"
+chmod 600 "$telemetry_secrets/token"
 python3 scripts/load.py --rate 5 --duration 4 --token-file "$telemetry_secrets/token" --output "$telemetry_reports/http-contract"
 python3 - "$telemetry_reports/http-contract/summary.json" <<'PY_SMOKE'
 import json,sys
@@ -48,3 +45,5 @@ assert summary['outcomes']=={'202':20}, summary['outcomes']
 assert summary['accepted_reconciliation']['passed'], summary['accepted_reconciliation']
 assert summary['accepted_reconciliation']['visible']==20, summary['accepted_reconciliation']
 PY_SMOKE
+python3 scripts/check-observability.py --password-file "$telemetry_secrets/auth/grafana-admin-password" --output "$telemetry_reports/observability.json"
+TELEMETRY_CONSOLE_TOKEN_FILE="$telemetry_secrets/token" TELEMETRY_BROWSER_REPORTS="$telemetry_reports/console" node console/test/live.mjs

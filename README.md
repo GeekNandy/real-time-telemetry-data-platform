@@ -52,14 +52,21 @@ The complete integration suite requires Docker and runs without silently skippin
 ./scripts/demo-event.sh
 ```
 
+The [operator console](docs/console.md) opens at **http://127.0.0.1:8088**. Connect
+with the generated `data/auth/console.token`, then submit and inspect a synthetic
+event through the actual pipeline. The overview shows live aggregate metrics;
+Grafana dashboards are provisioned automatically on port 3000. See the console
+guide for local credentials, scope boundaries and browser verification.
+
 The Compose stack binds host ports to loopback and uses generated demo credentials. The [Helm deployment](deploy/helm/telemetry/README.md) uses independent collector and worker workloads, retained collector PVCs, non-root execution and explicit network policy. `./scripts/kind-smoke.sh` builds the image, reconciles twenty accepted IDs and restarts the collector. This is a correctness smoke, not a capacity result.
 
 The [AWS reference](infra/aws/README.md) provides private EKS, encrypted storage and ECR configuration. Validation and mocked policy tests do not establish a real AWS deployment or high availability.
 
 ## Performance and verification
 
-The [load harness and profiling protocol](docs/performance.md) separate offered traffic, accepted traffic, client drops and accepted-ID reconciliation. No pipeline capacity or whole-service profiling result is claimed. [Verification records](docs/verification.md) distinguish current CI checks from historical foundation evidence.
+The [load harness and profiling protocol](docs/performance.md) separate offered traffic, accepted traffic, client drops and accepted-ID reconciliation. No pipeline capacity or whole-service profiling result is claimed. [Verification records](docs/verification.md) link observed results to their tested revisions and environments.
 
 ## Development
 
-Changes are proposed from feature branches and merged through PRs after the relevant checks pass. The foundation was extracted from [draft PR #2](https://github.com/GeekNandy/real-time-telemetry-data-platform/pull/2); the [review sequence](docs/review-sequence.md) explains its decomposition. Owner-authorized merging is not independent human approval.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch, validation and review workflow,
+and the [technical review guide](docs/review-guide.md) for the main design boundaries.

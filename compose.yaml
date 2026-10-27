@@ -113,9 +113,44 @@ services:
     volumes:
       - ./deploy/observability/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
       - ./deploy/observability/alerts.yaml:/etc/prometheus/alerts.yaml:ro
-      - ./data/auth:/etc/prometheus/auth:ro
+      - ${TELEMETRY_AUTH_DIR:-./data/auth}/observe.token:/etc/prometheus/auth/observe.token:ro
+  grafana:
+    image: grafana/grafana:12.2.0
+    profiles: [observability]
+    environment:
+      GF_SECURITY_ADMIN_USER: operator
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/telemetry/grafana-admin-password
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    ports: ["127.0.0.1:3000:3000"]
+    mem_limit: 256m
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./deploy/observability/grafana:/etc/grafana/provisioning:ro
+      - ./deploy/observability/dashboard.json:/var/lib/grafana/dashboards/telemetry.json:ro
+      - ${TELEMETRY_AUTH_DIR:-./data/auth}/grafana-admin-password:/run/telemetry/grafana-admin-password:ro
+    depends_on:
+      prometheus: {condition: service_started}
+  console:
+    image: real-time-telemetry-console:local
+    build: ./console
+    profiles: [console]
+    init: true
+    read_only: true
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    ports: ["127.0.0.1:8088:8080"]
+    depends_on:
+      collector: {condition: service_started}
+      worker: {condition: service_started}
 volumes:
   kafka-data:
   postgres-data:
   collector-wal:
   profiles:
+  grafana-data:

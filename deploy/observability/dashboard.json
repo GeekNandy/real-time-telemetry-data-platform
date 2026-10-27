@@ -18,7 +18,7 @@
       "title": "Accepted events per second",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "telemetry-prometheus"
       },
       "gridPos": {
         "h": 8,
@@ -45,7 +45,7 @@
       "title": "Buffered records",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "telemetry-prometheus"
       },
       "gridPos": {
         "h": 8,
@@ -72,7 +72,7 @@
       "title": "Buffered bytes",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "telemetry-prometheus"
       },
       "gridPos": {
         "h": 8,
@@ -99,7 +99,7 @@
       "title": "Oldest buffered record",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "telemetry-prometheus"
       },
       "gridPos": {
         "h": 8,
@@ -126,7 +126,7 @@
       "title": "Stage p99 duration",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "telemetry-prometheus"
       },
       "gridPos": {
         "h": 8,
@@ -153,7 +153,7 @@
       "title": "Stage failures",
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "telemetry-prometheus"
       },
       "gridPos": {
         "h": 8,
@@ -173,15 +173,6 @@
         },
         "overrides": []
       }
-    }
-  ],
-  "__inputs": [
-    {
-      "name": "DS_PROMETHEUS",
-      "label": "Prometheus",
-      "type": "datasource",
-      "pluginId": "prometheus",
-      "pluginName": "Prometheus"
     }
   ]
 }
