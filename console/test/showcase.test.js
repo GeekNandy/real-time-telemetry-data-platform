@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import { validateRun, complete, number } from '../showcase/run-model.js';
+import { validateRun, complete, number, observedAt } from '../showcase/run-model.js';
 
 const recording = JSON.parse(await fs.readFile(new URL('../dist/recorded-run.json', import.meta.url)));
 test('captured Compose and Kubernetes records retain their separate identities', () => {
@@ -40,4 +40,8 @@ test('incorrect reconciliation totals and unrelated report links are rejected', 
 test('unknown values remain unknown', () => {
   assert.equal(number(null), '—'); assert.equal(number(undefined), '—');
   assert.equal(number(NaN), '—'); assert.equal(number(0), '0.0');
+});
+test('visibility bounds use the offered schedule even when request dispatch is delayed', () => {
+  assert.equal(observedAt({ scheduled_s: 2, started_s: 5, observed_visibility_upper_bound_s: 7 }), 9);
+  assert.equal(observedAt({ scheduled_s: 2, started_s: 5 }), null);
 });

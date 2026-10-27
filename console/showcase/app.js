@@ -1,4 +1,4 @@
-import { complete, number, validateRun } from './run-model.js';
+import { complete, number, observedAt, validateRun } from './run-model.js';
 
 const $ = id => document.getElementById(id);
 const views = ['overview', 'events', 'evidence', 'local'];
@@ -56,13 +56,14 @@ function drawChart() {
 function showEvent(index) {
   selected = index;
   const row = environment().requests[index];
+  const observation = observedAt(row);
   $('selected-id').textContent = row.event_id;
   const steps = [
     ['request-step', 'At +' + number(row.started_s, 3) + ' s', true],
     ['receipt-step', 'HTTP ' + row.status + ' at +' + number(row.completed_s, 3) + ' s', row.status === 202],
-    ['query-step', typeof row.observed_visibility_upper_bound_s === 'number' ?
-      'Observed by +' + number(row.started_s + row.observed_visibility_upper_bound_s, 3) + ' s; bound includes polling delay' :
-      'Visibility was not confirmed in this recording', typeof row.observed_visibility_upper_bound_s === 'number']
+    ['query-step', observation !== null ?
+      'Observed by +' + number(observation, 3) + ' s; bound includes polling delay' :
+      'Visibility was not confirmed in this recording', observation !== null]
   ];
   for (const [id, text, confirmed] of steps) {
     $(id).className = confirmed ? 'complete' : 'active'; $(id).querySelector('p').textContent = text;

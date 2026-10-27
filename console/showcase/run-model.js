@@ -46,3 +46,8 @@ export function complete(environment) {
 export function number(value, digits = 1) {
   return finite(value) ? value.toFixed(digits) : '—';
 }
+
+export function observedAt(row) {
+  return finite(row.scheduled_s) && finite(row.observed_visibility_upper_bound_s) ?
+    row.scheduled_s + row.observed_visibility_upper_bound_s : null;
+}

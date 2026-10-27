@@ -54,6 +54,8 @@ try {
     await page.getByRole('button', { name: 'Inspect event 3', exact: true }).click();
     assert.equal(await page.locator('#selected-id').textContent(), data.environments.compose.requests[2].event_id);
     assert.equal(await page.locator('#query-step').getAttribute('class'), 'complete');
+    const row = data.environments.compose.requests[2];
+    assert.match(await page.locator('#query-step p').textContent(), new RegExp((row.scheduled_s + row.observed_visibility_upper_bound_s).toFixed(3)));
     assert.match(await page.locator('#event-record').textContent(), /observed_visibility_upper_bound_s/);
   });
   await run('environment and chart selection use their own recorded values', async page => {
