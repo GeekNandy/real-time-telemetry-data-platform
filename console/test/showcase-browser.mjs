@@ -85,7 +85,9 @@ try {
   await run('mobile navigation and event details fit the viewport', async page => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(url); await page.getByText('All 20 accepted IDs reconciled').waitFor();
+    assert.ok(await page.getByText('Recorded run · 27 Oct 2026', { exact: true }).isVisible());
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.screenshot({ path: path.join(reports, 'recorded-mobile-overview.png'), fullPage: true });
     await page.getByRole('link', { name: 'Events', exact: true }).click();
     await page.getByRole('button', { name: 'Inspect event 20', exact: true }).click();
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));

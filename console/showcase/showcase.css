@@ -1,5 +1,6 @@
 .recording-bar{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:24px;color:var(--muted);font-size:10px}
 .recording-bar>span{color:var(--lime);letter-spacing:.04em}
+.topbar-actions>.badge{display:inline-flex}
 select{background:var(--surface);color:var(--text);border:1px solid #45513b;border-radius:5px;padding:7px 9px;font:inherit;max-width:100%}
 .recording-bar label{display:flex;align-items:center;gap:10px}
 .chart-control{font-size:9px;color:var(--muted);display:flex;align-items:center;gap:7px}
