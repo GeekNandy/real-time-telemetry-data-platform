@@ -10,4 +10,3 @@ from checks that are pending. Link integration reports when available.
 ## Failure and operational considerations
 
 Describe retry behavior, bounded resources, recovery and remaining limitations.
-Do not count an author's self-review as an independent approval.

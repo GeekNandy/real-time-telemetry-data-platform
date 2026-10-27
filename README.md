@@ -64,8 +64,9 @@ The [AWS reference](infra/aws/README.md) provides private EKS, encrypted storage
 
 ## Performance and verification
 
-The [load harness and profiling protocol](docs/performance.md) separate offered traffic, accepted traffic, client drops and accepted-ID reconciliation. No pipeline capacity or whole-service profiling result is claimed. [Verification records](docs/verification.md) distinguish current CI checks from historical foundation evidence.
+The [load harness and profiling protocol](docs/performance.md) separate offered traffic, accepted traffic, client drops and accepted-ID reconciliation. No pipeline capacity or whole-service profiling result is claimed. [Verification records](docs/verification.md) link observed results to their tested revisions and environments.
 
 ## Development
 
-Changes are proposed from feature branches and merged through PRs after the relevant checks pass. The foundation was extracted from [draft PR #2](https://github.com/GeekNandy/real-time-telemetry-data-platform/pull/2); the [review sequence](docs/review-sequence.md) explains its decomposition. Owner-authorized merging is not independent human approval.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch, validation and review workflow,
+and the [technical review guide](docs/review-guide.md) for the main design boundaries.

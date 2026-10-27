@@ -2,7 +2,6 @@
 
 All implementation, documentation and CI changes belong on a feature branch and
 are proposed through a PR. Main receives changes through reviewed, tested PRs.
-The owner has authorized the eight-part foundation sequence to merge after its checks pass.
 
 - Keep each PR coherent, buildable and accompanied by its relevant tests.
 - Treat acceptance, replay and offset ordering as contracts; test failure paths.

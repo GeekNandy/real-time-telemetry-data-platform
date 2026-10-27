@@ -1,21 +1,17 @@
 # Verification evidence
 
-The foundation was reintroduced through sequential PRs, each based on its
-predecessor's merged main and merged only after its checks passed. Source and
-merge Git trees were compared at every step. See
-[the machine-readable record](../evidence/review-sequence.json).
+Verification results are tied to a tested source revision and execution environment.
 
-| Step | Merged PR | Tested source | Passing run |
-| --- | --- | --- | --- |
-| 1 | [#4](https://github.com/GeekNandy/real-time-telemetry-data-platform/pull/4) | `c9348ecbb21c` | [CI](https://github.com/GeekNandy/real-time-telemetry-data-platform/actions/runs/40345796709) |
-| 2 | [#5](https://github.com/GeekNandy/real-time-telemetry-data-platform/pull/5) | `d07a14ed83f4` | [CI](https://github.com/GeekNandy/real-time-telemetry-data-platform/actions/runs/40347098253) |
-| 3 | [#6](https://github.com/GeekNandy/real-time-telemetry-data-platform/pull/6) | `b4c0b5095e77` | [CI](https://github.com/GeekNandy/real-time-telemetry-data-platform/actions/runs/40348037167) |
-| 4 | [#7](https://github.com/GeekNandy/real-time-telemetry-data-platform/pull/7) | `15a77ee6803c` | [CI](https://github.com/GeekNandy/real-time-telemetry-data-platform/actions/runs/40349646799) |
-| 5 | [#8](https://github.com/GeekNandy/real-time-telemetry-data-platform/pull/8) | `4e74a38369ec` | [CI](https://github.com/GeekNandy/real-time-telemetry-data-platform/actions/runs/40351688418) |
-| 6 | [#9](https://github.com/GeekNandy/real-time-telemetry-data-platform/pull/9) | `70df3502533e` | [CI](https://github.com/GeekNandy/real-time-telemetry-data-platform/actions/runs/40358095968) |
-| 7 | [#10](https://github.com/GeekNandy/real-time-telemetry-data-platform/pull/10) | `671a6e86b544` | [CI](https://github.com/GeekNandy/real-time-telemetry-data-platform/actions/runs/40359885256) |
+| Scope | Tested source | Passing run |
+| --- | --- | --- |
+| Platform contracts, integrations and deployment smokes | `1e51d882e394` | [CI 40362033941](https://github.com/GeekNandy/real-time-telemetry-data-platform/actions/runs/40362033941) |
+| Operator console, client contracts and browser workflows | `411b30e7c6d9` | [CI 40401774419](https://github.com/GeekNandy/real-time-telemetry-data-platform/actions/runs/40401774419) |
 
-The final tooling PR runs the following gates again on its own revision:
+The [CI run index](../evidence/verification-runs.json) records selected passing
+runs with their tested source revisions. Detailed reports are published as
+workflow artifacts.
+
+## Verification gates
 
 | Layer | Gate |
 | --- | --- |
@@ -40,15 +36,10 @@ status. Twenty-event deployment workloads establish correctness, not capacity.
 No end-to-end throughput, whole-service JFR finding, real AWS deployment,
 controller-quorum/AZ HA, restore result or independent human approval is claimed.
 
-Historical evidence from PR #2 remains under evidence with its original source
-revisions and observation dates. It is not evidence that a later revision passed.
+Saved records retain their tested source revisions and observation dates. See the
+[evidence index](../evidence/README.md) for archived reports and revision mappings.
 
 ## Operator console extension
-
-The completed foundation's eighth PR is
-[#11](https://github.com/GeekNandy/real-time-telemetry-data-platform/pull/11),
-with [passing run 40362033941](https://github.com/GeekNandy/real-time-telemetry-data-platform/actions/runs/40362033941).
-That run establishes the 86-case foundation result described above.
 
 The operator-console change adds seven Java HTTP/metrics contracts, bringing the
 complete Java suite to 93 cases, plus eight Node client contracts and eight

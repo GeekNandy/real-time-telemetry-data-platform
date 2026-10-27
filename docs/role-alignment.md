@@ -1,8 +1,8 @@
 # Requirement-to-evidence map
 
 Source: [NVIDIA JR2027710](https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite/job/Germany-Munich/Senior-Software-Engineer--Real-Time-Data-Platform_JR2027710?source=jobboardlinkedin),
-checked 25 October 2026. This document maps technical signals to implementation
-and verification, not to a hiring probability.
+checked 25 October 2026. This document maps role requirements to implementation
+and verification.
 
 | Signal | Implementation | Required evidence |
 | --- | --- | --- |
@@ -17,15 +17,10 @@ and verification, not to a hiring probability.
 | Security/privacy foundations | Verified JWT identity, scopes, tenant-qualified access, restricted trace metadata and retention controls | Adversarial API checks, production-policy checks and documented data flow |
 | Coding-agent proficiency | Scoped issue, implementation/test cycle and explicit review and merge boundaries | Actual change log and command outcomes |
 
-Production tenure, on-call history, mentoring, design leadership and fluent
-communication must be demonstrated through the applicant's real experience.
-A new repository cannot manufacture those qualifications.
-
-The current execution status for every gate is in [verification.md](verification.md).
-Only observed outcomes may be marked passed.
+See [verification.md](verification.md) for observed results and the scope of each gate.
 
 The [operator console](console.md) exposes these backend capabilities through
 live observer snapshots, schema-shaped synthetic submission, separate acceptance
 and query-visibility milestones, tenant-scoped inspection and trace links. Its
 browser contracts and actual Compose journey provide additional API integration
-evidence. A visual dashboard does not establish throughput or production tenure.
+evidence.
