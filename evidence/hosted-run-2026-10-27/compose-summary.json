@@ -5,7 +5,7 @@
     "unresolved_ids": [],
     "visible": 20
   },
-  "acknowledged_per_s_including_inflight_drain": 5.249237067223402,
+  "acknowledged_per_s_including_inflight_drain": 5.210091523492195,
   "ambiguous_client_outcomes": {
     "count": 0,
     "later_visible": 0
@@ -20,39 +20,39 @@
   },
   "generator_schedule_delay": {
     "count": 20,
-    "p50_ms": 0.22,
-    "p95_ms": 0.319,
-    "p99_ms": 0.405
+    "p50_ms": 0.203,
+    "p95_ms": 0.417,
+    "p99_ms": 0.422
   },
   "interpretation": "Synthetic HTTP experiment. Visibility includes polling/sweep delay. No production capacity claim.",
-  "load_and_inflight_drain_s": 3.810077492000005,
+  "load_and_inflight_drain_s": 3.838704158999974,
   "observed_visibility_upper_bound": {
     "count": 20,
-    "p50_ms": 4013.574,
-    "p95_ms": 5738.802,
-    "p99_ms": 5939.791
+    "p50_ms": 3844.225,
+    "p95_ms": 5628.114,
+    "p99_ms": 5835.859
   },
   "outcomes": {
     "202": 20
   },
   "query_outcomes": {
     "200": 20,
-    "404": 120
+    "404": 80
   },
-  "revision": "645a4d0c2007333523eedeb0980353c01f22a19c",
+  "revision": "5177b8bd4616f7370c4cf43c8e12e8b97038c026",
   "scheduled": 20,
-  "started_at_utc": "2026-10-27T13:42:01.765317+00:00",
+  "started_at_utc": "2026-10-27T20:45:33.872082+00:00",
   "successful_http_elapsed": {
     "count": 20,
-    "p50_ms": 10.233,
-    "p95_ms": 34.794,
-    "p99_ms": 234.229
+    "p50_ms": 56.846,
+    "p95_ms": 383.816,
+    "p99_ms": 564.468
   },
   "successful_scheduled_to_response": {
     "count": 20,
-    "p50_ms": 10.5,
-    "p95_ms": 35.2,
-    "p99_ms": 234.452
+    "p50_ms": 57.046,
+    "p95_ms": 384.238,
+    "p99_ms": 564.742
   },
   "working_tree_dirty": false
 }
