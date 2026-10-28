@@ -68,7 +68,7 @@ The [AWS reference](infra/aws/README.md) provides private EKS, encrypted storage
 
 ## Performance and verification
 
-The [load harness and profiling protocol](docs/performance.md) separate offered traffic, accepted traffic, client drops and accepted-ID reconciliation. No pipeline capacity or whole-service profiling result is claimed. [Verification records](docs/verification.md) link observed results to their tested revisions and environments.
+The [load harness and profiling protocol](docs/performance.md) separate offered traffic, accepted traffic, client drops and accepted-ID reconciliation. The [measured workload and whole-service profiles](docs/performance-results.md) retain all rates, repetitions, rejected outcomes and shared-runner limitations. No production capacity ceiling is claimed. [Verification records](docs/verification.md) link observed results to their tested revisions and environments.
 
 ## Development
 

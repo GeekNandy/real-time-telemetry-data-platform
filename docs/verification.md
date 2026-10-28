@@ -44,6 +44,8 @@ Owner merge authorization and automated checks do not establish independent huma
 review. See the [review guide](review-guide.md) for the review scope and the
 [performance protocol](performance.md) for measured-workload requirements.
 
+The [full workload experiment](performance-results.md) completed nine fresh cases and 27 ten-minute phases on source `09832b42d2cb`. All 773,472 accepted IDs reconciled across 1,134,000 scheduled synthetic events. Ten offered events/second was the highest tested point meeting every workload budget in all three unprofiled repetitions; the higher rates missed one or more budgets. These shared-runner observations are separate from production capacity or a persistence-latency SLO.
+
 The [CI run index](../evidence/verification-runs.json) retains selected passing
 source mappings. Read archived reports against their recorded revisions and
 environments.
