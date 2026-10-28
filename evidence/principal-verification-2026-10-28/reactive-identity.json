@@ -1,0 +1,181 @@
+{
+  "schema_version": 1,
+  "source_revision": "597b1abbf2d997115eed9ef3af37b3fa2e80a12c",
+  "merged_revision": "056538c288eba1e6b650b22b6c9eae799e09b0cf",
+  "source_and_merged_tree": "65454d645ca1fc51b21a082a65bf9a8ed1219a54",
+  "workflow_run": 40667130985,
+  "artifact": {
+    "id": 12807815005,
+    "sha256": "df52c0f26e5da189e11d14e5cfcb3445ba0e87753d6f5d4aa126a2d39b00a463"
+  },
+  "totals": {
+    "tests": 128,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "distinct_cases": 128,
+  "suites": [
+    {
+      "tests": 27,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "dev.sharad.telemetry.core.CoreContractTest",
+      "sha256": "b5248891dd0149833d5816330b8b4bd120c8cad5a5eae27f081b7620280baab3"
+    },
+    {
+      "tests": 19,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "dev.sharad.telemetry.buffer.DiskBufferTest",
+      "sha256": "5802f66a042cda076b30394cf5945386cb34047a83c0a88dda0d7df01cac82b1"
+    },
+    {
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "dev.sharad.telemetry.schema.RegistryTransportTest",
+      "sha256": "6b00bc6ec2f294c9ec813a1a5b3f4500dd9eb57bfa77cdf7e6108a3fca10b023"
+    },
+    {
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "dev.sharad.telemetry.schema.SchemaContractTest",
+      "sha256": "108305177ef4013ff93e7552f3a86030096ca6b1ed9b90736e8f4ccaf0a56875"
+    },
+    {
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "dev.sharad.telemetry.config.PlatformSettingsTest",
+      "sha256": "51249a97f9b97925a38859b899ddf1fa7a544168080e1dbb92a0a410e10ab33c"
+    },
+    {
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "dev.sharad.telemetry.config.ProductionPolicyTest",
+      "sha256": "3c871ebbfb3e4c81dcf867fbd5cf7a536cd138982ad6701e10e6af518b7556b4"
+    },
+    {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "dev.sharad.telemetry.observability.PlatformTelemetryTest",
+      "sha256": "64966b6382cfe6ebd39289ad60735f16e97165c8f9b64478014386107ec5be6c"
+    },
+    {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "dev.sharad.telemetry.service.BrokerDurabilityIT",
+      "sha256": "79a143ecfb22e98ca8e056d4cb3140c8fa7b0ac8828ac906fabb2f29b17c13c0"
+    },
+    {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "dev.sharad.telemetry.service.CollectorContractIT",
+      "sha256": "0c693affc8a4646cd94135174c2e408f7f9c262f558aa446be0677340ff14c49"
+    },
+    {
+      "tests": 11,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "dev.sharad.telemetry.service.PlatformIT",
+      "sha256": "9660d59a54f043dda8c6cc3f0b113771bc09fc79b885441b50fa5c7e6030d1c8"
+    },
+    {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "dev.sharad.telemetry.service.RegistryContractIT",
+      "sha256": "e1ac19713129ab4097a8c9e83b670d6f5205f97267f2051d6545d8ac6c90024e"
+    },
+    {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "dev.sharad.telemetry.service.ReplicatedAcceptanceIT",
+      "sha256": "524a8730c98cddc7e9bebf2067cfd5a238a04e4c0747464f25c878be25ed1682"
+    },
+    {
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "dev.sharad.telemetry.service.BufferDispatcherTest",
+      "sha256": "a0731e2c6ea12d3eb071944410da65cb45ad04770e978e1a326dfcb0469927de"
+    },
+    {
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "dev.sharad.telemetry.service.KafkaAcceptancePolicyTest",
+      "sha256": "476756c5596214ac325ab5b87357dd4efe0f3aac6665935e399d7b6ee1ab53db"
+    },
+    {
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "dev.sharad.telemetry.service.KafkaAcceptanceTest",
+      "sha256": "e602d5d4821cf937cb1f5c2d71cd2a9f6610f8c395110111448e59bd8822a028"
+    },
+    {
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "dev.sharad.telemetry.service.OidcHttpsContractTest",
+      "sha256": "2805f1a59b1c39f848749e28844ba41b4cb3ad5eb175f9b2df1dbb4d954f3ffb"
+    },
+    {
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "dev.sharad.telemetry.service.OperationsControllerTest",
+      "sha256": "abb000b43b23d4e34bad12e36c113166807af00b71e1eac5d89aa8f947ac8f81"
+    },
+    {
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "dev.sharad.telemetry.service.ReactiveThreadingTest",
+      "sha256": "1e891dff26272d7d6820c3a758ab4fab874b6dfaf4af3734a273212c1dee9727"
+    },
+    {
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "dev.sharad.telemetry.service.SecurityContractTest",
+      "sha256": "8c8ba3b7681eaf8cd854d2455bc4b96b7c13ba4b6820bcdad010b8be58f74774"
+    },
+    {
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "dev.sharad.telemetry.service.WireContractTest",
+      "sha256": "c4768ba9fe0b6d850c82d0792eb1559563ee21c7a8c9634ff6daa24055ef6886"
+    }
+  ],
+  "execution_revision": "6273e20ff673d1f7e6502af13e447f7b8119bc2f"
+}

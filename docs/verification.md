@@ -1,51 +1,76 @@
 # Verification evidence
 
-Verification results identify the tested source, execution revision and environment.
-The Kafka-confirmed runtime passed [CI 40579394488](https://github.com/GeekNandy/real-time-telemetry-data-platform/actions/runs/40579394488)
-on source `556cfe22739b`. Its merged revision is `3876a0e0d816`; the executed and
-merged trees both equal `6b9c68defa30ff4e9ec65ff8e4df4c8b8b43c822`.
+Results identify source, execution revision, content tree and environment. The
+latest completed runtime verification is [CI 40688919946](https://github.com/GeekNandy/real-time-telemetry-data-platform/actions/runs/40688919946):
+**136 distinct Java tests, zero failures, errors or skips** (120 unit/contracts
+and 16 integrations). Source `839cec2b9e89`, execution `c4c87be2b4ef` and merged
+revision `9d0524bfeea9` share tree `e9f6fb6175b664b8a1e79aa87d596c20f91647af`.
+The standalone core runner repeats 27 existing cases and is not added again.
 
-All four required checks passed: client/browser contracts, Java integrations,
-deployment contracts and Kubernetes smoke. The [runtime evidence record](../evidence/replicated-acceptance-2026-10-27.json)
-contains suite counts, source mappings and deployment observations. Detailed
-reports are available as workflow artifacts.
+All four required checks passed: `console-contracts`,
+`contracts-and-integration`, `deployment-contracts` and `kubernetes-smoke`.
+The [persistence verification record](../evidence/principal-verification-2026-10-28/persistence-batching.json)
+retains suite counts and SHA-256 digests of the downloaded reports.
 
-| Layer | Observed gate |
+| Layer | Executed verification |
 | --- | --- |
-| Java unit/contracts | 92 cases, including bounded acknowledgement waiters and effective producer/topic policy |
-| Native integrations | Three cases: packaged HTTP/SIGKILL/replay, broker leader/minISR faults and real registry compatibility/restart |
-| PostgreSQL integrations | Twelve cases covering ID reconciliation, tenant scope, deduplication, commit gaps, poison/DLT, dependency outages, retention, drain, delayed acknowledgement and replicated collector-volume loss |
-| Buffer recovery | Quotas, checksums, ownership, child-JVM recovery and retryable reclamation after a durable checkpoint |
-| Registry transport | Five actual HTTP cases, including stalled bodies and oversized responses |
-| Browser/client contracts | 24 Node cases; eight operator-browser, six recorded-explorer and two protected-access workflows |
-| Startup and load clients | Two readiness retry contracts and six load/reconciliation contracts |
-| Compose runtime | Three data brokers, RF3/minISR2, twenty accepted/queryable IDs, private spool ownership, actual browser submission and authenticated observability provisioning |
-| Kubernetes runtime | Single development broker, rollout in kind, twenty accepted/queryable IDs, private spool ownership and collector restart |
-| Deployment policy | Helm lint, ten production guardrails, Kubernetes schema checks and two mocked Terraform policy runs |
+| Durable intake | Checksummed spool recovery, process termination, quotas, bounded waiters, complete-prefix checkpoints and all-or-nothing receipt completion |
+| Kafka durability | Actual leader/minISR faults; RF3/minISR2 acceptance; local collector-volume removal after 202 and complete downstream ID reconciliation |
+| Persistence | Sequential bounded poll batches, durable-prefix offset recovery, actual mixed valid/poison/suffix poll, confirmed DLT, retries, deduplication and dependency outages |
+| Reactive Java | Startup BlockHound agent with a positive blocking canary; actual Netty HTTP remains responsive while four JDBC operations block; cancelling HTTP interrupts its own JDBC work |
+| JWT/OIDC | Seven actual HTTPS OIDC/JWKS cases: rotation, claims, trust/SAN, redirects/origins, whole-body deadlines, oversized bodies and HTTP scope enforcement |
+| Tenant/privacy controls | Ten adversarial security cases, token-derived tenant access, read/write/observe separation, private/no-store responses and bounded trace metadata |
+| Schemas | Avro reader compatibility, actual registry rejection of breaking changes and restart; five transport cases including stalled and oversized responses |
+| Browser | Client contracts and actual browser workflows for the live console, recorded explorer, private sessions and logout |
+| Deployment policy | Helm lint, ten production guardrails, strict Kubernetes schemas and two mocked Terraform policy runs |
 
-The Java reports contain **107 distinct tests: 92 unit/contracts and 15
-integrations, with zero failures, errors or skips**. The standalone native core
-runner repeats 27 existing cases and is not added to that count.
+The [reactive/identity record](../evidence/principal-verification-2026-10-28/reactive-identity.json)
+links its 128-case run to the source and execution trees. The blocking detector is
+test-only and is absent from the runtime image. Data-copy, retention, replay and
+erasure boundaries are documented in [security.md](security.md); these controls
+are not a claim of GDPR certification.
 
-HTTP 202 follows Kafka acknowledgement and a durable delivery checkpoint. The
-replicated integration removes the collector's local volume after 202, stops a
-broker and reconciles the accepted identities against PostgreSQL. It also checks
-refusal below minISR, cancellation, identical retries and replay across a real
-checkpoint write failure. Each accepted identity has one downstream row.
+## Container and Kubernetes operations
 
-The [hosted recording](../evidence/hosted-run-2026-10-27/manifest.json) retains
-original report bytes and their SHA-256 digests. Compose uses three broker
-replicas with minISR 2; kind uses one development broker. The two configurations
-have different replication guarantees.
+[CI 40683420012](https://github.com/GeekNandy/real-time-telemetry-data-platform/actions/runs/40683420012)
+executed the [operations evidence](../evidence/principal-verification-2026-10-28/operations.json)
+on source `34ca0580d910`, execution `b9fb464137b2` and merged revision
+`1681d387fe82`, all with tree `799d5d8f203e86e1c4915fa9bf292697ea6b1a97`.
 
-Twenty-event smokes establish correctness, not capacity. Controller-quorum/AZ
-availability, real AWS deployment and restore exercises are outside these checks.
+- Compose ran three data brokers with RF3/minISR2, reconciled 20/20 accepted IDs,
+  exercised actual browser submission and authenticated observability, and checked
+  private spool ownership.
+- Kind used checksum-pinned Cilium 1.20.4 with its default CNI disabled. Six actual
+  peer tests passed: allowed ingress, two denied ingress paths, a healthy egress
+  target, allowed dependency egress and denied cross-namespace egress. An HTTP 401
+  is not accepted as evidence of a network-policy denial.
+- A two-replica worker rollout under live traffic reconciled 150/150 HTTP 202 IDs.
+  An invalid image rollout retained two available replicas; rollback, scale to
+  three and back to two, and another 20/20 reconciliation passed. Collector PVC
+  ownership and restart recovery also passed.
+- A logical PostgreSQL backup restored all 21 synthetic rows with complete content
+  equality into a separate database on the same disposable instance. A truncated
+  archive was rejected. This establishes the restore procedure, not cross-region
+  availability or a production RPO/RTO.
+
+Kind uses one development broker; it does not inherit the Compose replication
+guarantee. AWS validation and mocked plans create no resources and do not establish
+actual major-cloud production operations. The protected free Render service hosts
+captured evidence, not the live ingestion backend.
+
+## Workload measurements
+
+The [fixed SLO protocol](slo.md) requires repeated 100/s and 500/s workloads, a
+30-minute soak and a burst/recovery case, including live visibility, every accepted
+identity, CPU/memory/lag, JFR and raw scheduling audits. Short pilots are ineligible
+for those sustained claims. Passing a pilot workflow means the harness completed;
+its individual workload gates must still be read.
+
+The [earlier measured workload](performance-results.md) retains the original
+source, client, budgets and all observed outcomes. It is not a measurement of the
+current tuned revision. Current fixed-target results must supply their own source
+and protocol hashes before a throughput readiness claim.
+
 Owner merge authorization and automated checks do not establish independent human
-review. See the [review guide](review-guide.md) for the review scope and the
-[performance protocol](performance.md) for measured-workload requirements.
-
-The [full workload experiment](performance-results.md) completed nine fresh cases and 27 ten-minute phases on source `09832b42d2cb`. All 773,472 accepted IDs reconciled across 1,134,000 scheduled synthetic events. Ten offered events/second was the highest tested point meeting every workload budget in all three unprofiled repetitions; the higher rates missed one or more budgets. These shared-runner observations are separate from production capacity or a persistence-latency SLO.
-
-The [CI run index](../evidence/verification-runs.json) retains selected passing
-source mappings. Read archived reports against their recorded revisions and
-environments.
+review. See the [review guide](review-guide.md) and the
+[CI run index](../evidence/verification-runs.json) for archived scopes and mappings.

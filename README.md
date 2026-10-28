@@ -62,13 +62,13 @@ event through the actual pipeline. The overview shows live aggregate metrics;
 Grafana dashboards are provisioned automatically on port 3000. See the console
 guide for local credentials, scope boundaries and browser verification.
 
-The Compose stack binds host ports to loopback and uses generated demo credentials. The [Helm deployment](deploy/helm/telemetry/README.md) uses independent collector and worker workloads, retained collector PVCs, non-root execution and explicit network policy. `./scripts/kind-smoke.sh` builds the image, reconciles twenty accepted IDs and restarts the collector. This is a correctness smoke, not a capacity result.
+The Compose stack binds host ports to loopback and uses generated demo credentials. The [Helm deployment](deploy/helm/telemetry/README.md) uses independent collector and worker workloads, retained collector PVCs, non-root execution and explicit network policy. `./scripts/kind-smoke.sh` verifies enforced Cilium policy, reconciles accepted IDs during worker rollout, exercises failed-rollout recovery and scaling, and restarts the collector. The Compose check also verifies a logical PostgreSQL restore. These are correctness and operational checks; workload capacity has separate gates.
 
 The [AWS reference](infra/aws/README.md) provides private EKS, encrypted storage and ECR configuration. Validation and mocked policy tests do not establish a real AWS deployment or high availability.
 
 ## Performance and verification
 
-The [load harness and profiling protocol](docs/performance.md) separate offered traffic, accepted traffic, client drops and accepted-ID reconciliation. The [measured workload and whole-service profiles](docs/performance-results.md) retain all rates, repetitions, rejected outcomes and shared-runner limitations. No production capacity ceiling is claimed. [Verification records](docs/verification.md) link observed results to their tested revisions and environments.
+The [fixed workload SLOs](docs/slo.md) define repeated 100/s and 500/s targets, a 30-minute soak and bounded burst recovery. The load clients separate offered traffic, accepted traffic, client drops and exact accepted-ID/content reconciliation. Full target gates must pass before a capacity claim. The [measured workload and whole-service profiles](docs/performance-results.md) retain all rates, repetitions, rejected outcomes and shared-runner limitations. No production capacity ceiling is claimed. [Verification records](docs/verification.md) link observed results to their tested revisions and environments.
 
 ## Development
 

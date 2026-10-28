@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "source_revision": "34ca0580d91032d1c996c047f4561fde1592839d",
+  "merged_revision": "1681d387fe82a812ed0fffe32bd1313cc2e45811",
+  "tree": "799d5d8f203e86e1c4915fa9bf292697ea6b1a97",
+  "workflow_run": 40683420012,
+  "artifact": {
+    "id": 12813934752,
+    "sha256": "5c93b04f7ab96a6178a910a7f81862d434103f34bb9bb815793c0338175932d3"
+  },
+  "reports": {
+    "compose-smoke/restore.json": {
+      "schema_version": 1,
+      "source_revision": "b9fb464137b2db01c1c102fc91c350f58cc244d4",
+      "observed_at": "2026-10-28T12:04:02.501701+00:00",
+      "synthetic_rows": 21,
+      "complete_row_comparison": true,
+      "backup_sha256": "1df710b4d6673fcc82988b48c38f2bc065b814deb18e481e9ba2da961d6acf59",
+      "restored_rows": 21,
+      "corrupt_archive_rejected": true,
+      "elapsed_seconds": 1.209,
+      "passed": true,
+      "limitations": [
+        "Logical restore on the same disposable instance; no production or cross-region RPO/RTO claim"
+      ]
+    },
+    "compose-smoke/http-contract/summary.json": {
+      "scheduled": 20,
+      "outcomes": {
+        "202": 20
+      },
+      "accepted_reconciliation": {
+        "accepted": 20,
+        "passed": true,
+        "unresolved_ids": [],
+        "visible": 20
+      }
+    },
+    "kind-smoke/worker-roll/summary.json": {
+      "scheduled": 150,
+      "outcomes": {
+        "202": 150
+      },
+      "accepted_reconciliation": {
+        "accepted": 150,
+        "passed": true,
+        "unresolved_ids": [],
+        "visible": 150
+      }
+    },
+    "kind-smoke/after-rollback-scale/summary.json": {
+      "scheduled": 20,
+      "outcomes": {
+        "202": 20
+      },
+      "accepted_reconciliation": {
+        "accepted": 20,
+        "passed": true,
+        "unresolved_ids": [],
+        "visible": 20
+      }
+    },
+    "kind-smoke/http-contract/summary.json": {
+      "scheduled": 20,
+      "outcomes": {
+        "202": 20
+      },
+      "accepted_reconciliation": {
+        "accepted": 20,
+        "passed": true,
+        "unresolved_ids": [],
+        "visible": 20
+      }
+    },
+    "kind-smoke/network-policy/results.json": {
+      "schema_version": 1,
+      "enforcing_cni": "Cilium 1.20.4",
+      "cases": [
+        {
+          "name": "ingress-allowed",
+          "mode": "http",
+          "expected": "allow",
+          "passed": true
+        },
+        {
+          "name": "ingress-wrong-label",
+          "mode": "http",
+          "expected": "deny",
+          "passed": true
+        },
+        {
+          "name": "ingress-wrong-namespace",
+          "mode": "http",
+          "expected": "deny",
+          "passed": true
+        },
+        {
+          "name": "egress-target-healthy",
+          "mode": "tcp",
+          "expected": "allow",
+          "passed": true
+        },
+        {
+          "name": "egress-dependency-allowed",
+          "mode": "tcp",
+          "expected": "allow",
+          "passed": true
+        },
+        {
+          "name": "egress-other-namespace-denied",
+          "mode": "tcp",
+          "expected": "deny",
+          "passed": true
+        }
+      ]
+    }
+  },
+  "execution_revision": "b9fb464137b2db01c1c102fc91c350f58cc244d4"
+}
