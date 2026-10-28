@@ -16,6 +16,8 @@ own rationale and review; retain the original results and revision.
 | Soak | 500 events/s | 30 minutes | Same as scale | Stability and retained-heap regression guard |
 | Burst | 500 → 1000 → 500 events/s | Fixed 94-second ramp/hold sequence | Same as scale | Bounded overload and recovery |
 
+All phases use G1 with a 40% initial / 65% maximum RAM budget and a 50 ms soft GC pause target; the exact JVM flags are retained in each runtime override. A pause target is not a latency guarantee.
+
 All profiles use eight synthetic tenants, schema-valid 512-byte JSON envelopes,
 three Kafka data brokers with RF3/minISR2 and `acks=all`, stable event identities,
 10% trace sampling and a separate warmup. String padding controls the wire size;
@@ -31,9 +33,11 @@ p99 must be <=25 ms. Source lag must stay within two seconds of offered traffic;
 application memory must stay below 80% of quota and CPU p95 below 90% of its quota.
 Observers must cover at least 90% of the measured window. The arrival timer may include or exclude one terminal boundary iteration; report the nominal and observed offered counts and require their difference to be at most one. The success denominator includes observed starts plus drops, while raw records must exactly match started/completed audit counters. Larger cardinality differences invalidate the experiment.
 
+Warmup is reported separately from the measured SLO window. Cold-start drops and retryable outcomes remain in its raw audit; protocol violations or lost 202 identities stop the run. Its durable backlog must drain before measurement. Every measured steady-state window still requires zero generator drops and all fixed release gates.
+
 Each accepted request is queried during load. Its visibility observation includes
 polling and network time and is an upper bound, not a database commit timestamp.
-A separate post-load reconciliation verifies every observed 202 and reports
+Polling backs off from 20 ms to a 200 ms cap within the same absolute deadline, bounding query amplification during lag. A separate post-load reconciliation verifies every observed 202 and reports
 non-202/transport outcomes that become visible later. Timeouts and 503 outcomes
 remain ambiguous; they are not silently counted as lost accepted data.
 

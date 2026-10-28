@@ -40,7 +40,7 @@ def metrics(token,url,path):
     with urllib.request.urlopen(request,timeout=3) as response:
         body=response.read(2097153)
         if len(body)>2097152:raise ValueError('Metrics response exceeds the bound')
-    lines=[line for line in body.decode().splitlines() if line.startswith(('telemetry_append_phase_','telemetry_dispatch_'))]
+    lines=[line for line in body.decode().splitlines() if line.startswith(('telemetry_append_phase_','telemetry_dispatch_','telemetry_persistence_batch_'))]
     path.write_text('\n'.join(lines)+'\n')
 
 
@@ -97,12 +97,26 @@ def retained_heap(profiles,artifact,config,end):
     return results
 
 
+def drain_warmup(compose,token,directory):
+    started=time.monotonic();stable=0
+    while time.monotonic()-started<900:
+        observed=CAPACITY.operations(token,'http://127.0.0.1:8080')
+        samples=REPORT.CAPACITY.read_jsonl(directory/'source-lag.raw.log')
+        last=samples[-1] if samples else {}
+        fresh=last.get('available') and time.time()*1000-REPORT.millis(last['observed_at'])<10000
+        if observed and observed.get('bufferRecords')==0 and fresh and last['lag_records']==0:stable+=1
+        else:stable=0
+        if stable>=2:return {'drain_seconds':round(time.monotonic()-started,3),'zero_lag_samples':stable}
+        time.sleep(2)
+    raise RuntimeError('Warmup did not drain its durable backlog within the bound')
+
+
 def phase(args,name,env_file,private):
     directory=args.output/name;directory.mkdir()
     artifact=args.output/'artifact'/name;artifact.mkdir(parents=True)
     config=TOOL.profile(args.profile)
     if args.mode=='pilot':
-        config.update(rate_per_second=10,duration_seconds=15,virtual_users=32)
+        config.update(rate_per_second=100,duration_seconds=30,virtual_users=256)
         config.pop('stages',None)
     config.update(mode='measure',kind='measure',collector_url='http://127.0.0.1:8080',
         worker_url='http://127.0.0.1:8082',request_timeout_ms=5000,settle_seconds=900,
@@ -112,7 +126,7 @@ def phase(args,name,env_file,private):
     for dependency in ('kafka','kafka2','kafka3','registry','postgres','jaeger'):
         override['services'][dependency]={'cpuset':args.service_cpus}
     for role in ('collector','worker'):
-        options=f'-XX:MaxRAMPercentage=65 -XX:ActiveProcessorCount={config["role_cpus"]}'
+        options=f'-XX:+UseG1GC -XX:InitialRAMPercentage=40 -XX:MaxRAMPercentage=65 -XX:MaxGCPauseMillis=50 -XX:ActiveProcessorCount={config["role_cpus"]}'
         if profiled:
             options+=f' -XX:StartFlightRecording=name=runtime,filename=/profiles/{role}.jfr,settings=/app/profile-safe.jfc,dumponexit=true,maxsize=128m,maxage=60m'
         if args.profile=='soak':
@@ -142,12 +156,19 @@ def phase(args,name,env_file,private):
         probe,probe_log=CAPACITY.start_probe(compose,directory,seconds=3600)
         monitor=threading.Thread(target=CAPACITY.sample,args=(compose,credentials[0]['token'],directory/'resources.jsonl',stopped),daemon=True)
         monitor.start()
-        warmup=dict(config,kind='warmup',duration_seconds=10 if args.mode=='pilot' else 60,
+        warmup=dict(config,kind='warmup',duration_seconds=60,
             rate_per_second=min(config['rate_per_second'],100),run_prefix=str(uuid.uuid4())[:24])
         warmup.pop('stages',None)
         warmup_status=client(warmup,private,directory/'warmup.log',args)
         warmup_summary,warmup_rows=TOOL.audit(directory/'warmup.log',warmup)
-        if warmup_status or any(not r['receipt_valid'] for r in warmup_rows):raise RuntimeError('Warmup must produce valid receipts without client drops')
+        warmup_drain=drain_warmup(compose,credentials[0]['token'],directory)
+        warm_manifest=[{key:r[key] for key in ('id','tenant_slot','http_status')} for r in warmup_rows]
+        warm_manifest.sort(key=lambda r:r['http_status']!=202)
+        warm_reconciliation=client(dict(warmup,mode='reconcile'),private,directory/'warmup-reconcile.log',args,warm_manifest)
+        TOOL.reconcile_audit(directory/'warmup-reconcile.log',warm_manifest)
+        if warm_reconciliation:raise RuntimeError('Warmup accepted-ID reconciliation failed')
+        if TOOL.value(warmup_summary,'contract_failures') or any(r['http_status']==202 and not r['receipt_valid'] for r in warmup_rows):
+            raise RuntimeError('Warmup violated identity/content contracts')
         for role,url in [('collector',config['collector_url']),('worker',config['worker_url'])]:
             metrics(credentials[0]['token'],url,artifact/(role+'-histograms-before.prom'))
         measured_status=client(config,private,directory/'load.log',args)
@@ -178,10 +199,12 @@ def phase(args,name,env_file,private):
             eligible=args.mode=='full',profiled=profiled,source_revision=TOOL.BASELINE if name=='baseline' else args.revision,
             states_before=before,states_after=after,spool_filesystem_stat=filesystem,jfr=jfr_evidence,
             client_exit=measured_status,reconciliation_exit=reconciliation_status,
+            warmup=dict(warmup_drain,client_exit=warmup_status,attempted=len(warmup_rows),
+                http_202=TOOL.value(warmup_summary,'http_202'),dropped=TOOL.value(warmup_summary,'dropped_iterations')),
             protocol_sha256=digest(ROOT/'tools/slo/workload.js'),profiles_sha256=digest(ROOT/'tools/slo/profiles.json'))
         (artifact/'config.json').write_text(json.dumps(config,indent=2)+'\n')
         (artifact/'report.json').write_text(json.dumps(result,indent=2,sort_keys=True)+'\n')
-        for name_ in ('warmup.log','load.log','reconcile.log','resources.jsonl','source-lag.raw.log'):
+        for name_ in ('warmup.log','warmup-reconcile.log','load.log','reconcile.log','resources.jsonl','source-lag.raw.log'):
             CAPACITY.compress(directory/name_,artifact/(name_+'.gz'))
         print(f'Measured gates: {result["passed"]}; failed: {[k for k,v in result["gates"].items() if not v]}',flush=True)
         return result
@@ -189,9 +212,21 @@ def phase(args,name,env_file,private):
         stopped.set()
         if monitor:monitor.join(timeout=30)
         stop_probe(probe,probe_log)
+        if profiled and not (artifact/'report.json').exists() and (directory/'warmup.log').is_file():
+            try:
+                for role,url in [('collector',config['collector_url']),('worker',config['worker_url'])]:
+                    metrics(credentials[0]['token'],url,artifact/(role+'-diagnostic-histograms.prom'))
+                run(compose+['stop','-t','30','collector','worker'],output=directory/'diagnostic-stop.log',timeout=90)
+                diagnostic_summary,diagnostic_rows=TOOL.audit(directory/'warmup.log',warmup)
+                diagnostic_start=diagnostic_rows[0]['scenario_start_ms']
+                diagnostic_jfr,profiles=jfr(compose,directory,artifact,warmup,diagnostic_start,diagnostic_start+warmup['duration_seconds']*1000)
+                for role in ('collector','worker'):CAPACITY.compress(profiles/(role+'.jfr'),artifact/(role+'-diagnostic.jfr.gz'))
+                (artifact/'diagnostic.json').write_text(json.dumps(dict(kind='warmup',capacity_eligible=False,jfr=diagnostic_jfr),indent=2)+'\n')
+            except Exception as diagnostic_error:
+                (artifact/'diagnostic-error.json').write_text(json.dumps({'error_type':type(diagnostic_error).__name__})+'\n')
         run(compose+['logs','--no-color','--tail','60'],output=artifact/'application-tail.log',timeout=30,check=False)
         # On harness errors, preserve only audit/observation logs; never archive private token/env files.
-        for name_ in ('warmup.log','load.log','reconcile.log','resources.jsonl','source-lag.raw.log'):
+        for name_ in ('warmup.log','warmup-reconcile.log','load.log','reconcile.log','resources.jsonl','source-lag.raw.log'):
             source=directory/name_
             if source.is_file() and not (artifact/(name_+'.gz')).exists():CAPACITY.compress(source,artifact/(name_+'.gz'))
         run(compose+['down','--volumes','--remove-orphans'],output=directory/'cleanup.log',timeout=120,check=False)
@@ -233,6 +268,7 @@ def main():
     (artifact/'environment.json').write_text(json.dumps(metadata,indent=2,sort_keys=True)+'\n')
     phases=['baseline','tuned','tuned-profiled'] if args.profile in ('reference','scale') else ['tuned-profiled']
     if args.repeat%2==0:phases.reverse()
+    if args.mode=='pilot':phases=['tuned-profiled','tuned','baseline']
     results=[]
     with tempfile.TemporaryDirectory(prefix='telemetry-slo-') as temporary:
         private=Path(temporary);env_file=private/'env'

@@ -71,11 +71,19 @@ class WireContractTest {
           new PersistenceConsumer(
               sink,
               new AvroEventCodec(catalog),
-              new PlatformTelemetry(OpenTelemetry.noop(), meters));
-      for (byte[] payload : new byte[][] {null, new byte[0], new byte[] {1, 2, 3}})
-        assertThrows(
-            PersistenceConsumer.PoisonRecord.class,
-            () -> consumer.consume(new ConsumerRecord<>("events", 0, 0, "invalid", payload), ack));
+              new PlatformTelemetry(OpenTelemetry.noop(), meters),
+              meters);
+      for (byte[] payload : new byte[][] {null, new byte[0], new byte[] {1, 2, 3}}) {
+        var failed =
+            assertThrows(
+                org.springframework.kafka.listener.BatchListenerFailedException.class,
+                () ->
+                    consumer.consume(
+                        java.util.List.of(new ConsumerRecord<>("events", 0, 0, "invalid", payload)),
+                        ack));
+        assertInstanceOf(PersistenceConsumer.PoisonRecord.class, failed.getCause());
+        assertEquals(0, failed.getIndex());
+      }
     } finally {
       meters.close();
     }
