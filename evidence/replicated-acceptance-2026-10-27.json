@@ -1,0 +1,208 @@
+{
+  "acceptance_contract": "HTTP 202 follows Kafka acknowledgement and a durable local delivered checkpoint. Timeout/cancellation retain unconfirmed work; stable tenant/event identity and identical payload enable deduplicated retry.",
+  "execution_revision": "5177b8bd4616f7370c4cf43c8e12e8b97038c026",
+  "java_counts": {
+    "errors": 0,
+    "failures": 0,
+    "integration": 15,
+    "skipped": 0,
+    "total": 107,
+    "unit-contract": 92
+  },
+  "java_suites": [
+    {
+      "errors": 0,
+      "failures": 0,
+      "layer": "unit-contract",
+      "name": "dev.sharad.telemetry.config.ProductionPolicyTest",
+      "skipped": 0,
+      "tests": 5
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "layer": "unit-contract",
+      "name": "dev.sharad.telemetry.config.PlatformSettingsTest",
+      "skipped": 0,
+      "tests": 3
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "layer": "unit-contract",
+      "name": "dev.sharad.telemetry.schema.RegistryTransportTest",
+      "skipped": 0,
+      "tests": 5
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "layer": "unit-contract",
+      "name": "dev.sharad.telemetry.schema.SchemaContractTest",
+      "skipped": 0,
+      "tests": 5
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "layer": "unit-contract",
+      "name": "dev.sharad.telemetry.buffer.DiskBufferTest",
+      "skipped": 0,
+      "tests": 14
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "layer": "unit-contract",
+      "name": "dev.sharad.telemetry.core.CoreContractTest",
+      "skipped": 0,
+      "tests": 27
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "layer": "integration",
+      "name": "dev.sharad.telemetry.service.PlatformIT",
+      "skipped": 0,
+      "tests": 11
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "layer": "integration",
+      "name": "dev.sharad.telemetry.service.RegistryContractIT",
+      "skipped": 0,
+      "tests": 1
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "layer": "integration",
+      "name": "dev.sharad.telemetry.service.CollectorContractIT",
+      "skipped": 0,
+      "tests": 1
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "layer": "integration",
+      "name": "dev.sharad.telemetry.service.BrokerDurabilityIT",
+      "skipped": 0,
+      "tests": 1
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "layer": "integration",
+      "name": "dev.sharad.telemetry.service.ReplicatedAcceptanceIT",
+      "skipped": 0,
+      "tests": 1
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "layer": "unit-contract",
+      "name": "dev.sharad.telemetry.service.KafkaAcceptanceTest",
+      "skipped": 0,
+      "tests": 8
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "layer": "unit-contract",
+      "name": "dev.sharad.telemetry.service.OperationsControllerTest",
+      "skipped": 0,
+      "tests": 7
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "layer": "unit-contract",
+      "name": "dev.sharad.telemetry.service.WireContractTest",
+      "skipped": 0,
+      "tests": 3
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "layer": "unit-contract",
+      "name": "dev.sharad.telemetry.service.KafkaAcceptancePolicyTest",
+      "skipped": 0,
+      "tests": 4
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "layer": "unit-contract",
+      "name": "dev.sharad.telemetry.service.SecurityContractTest",
+      "skipped": 0,
+      "tests": 10
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "layer": "unit-contract",
+      "name": "dev.sharad.telemetry.observability.PlatformTelemetryTest",
+      "skipped": 0,
+      "tests": 1
+    }
+  ],
+  "limits": [
+    "Data-plane failure tests do not establish controller-quorum or AZ availability.",
+    "Twenty-event deployment smokes establish correctness, not capacity.",
+    "Owner merge authorization and automated checks are not independent human review."
+  ],
+  "merged_revision": "3876a0e0d816f30385e122b36e523c86348d8df8",
+  "observed_date": "2026-10-27",
+  "replicated_failure_scope": [
+    "actual three-broker RF3/minISR2 topic policy",
+    "collector process and local-volume loss after HTTP 202",
+    "insufficient ISR cannot return HTTP 202",
+    "HTTP cancellation preserves started durable work",
+    "broker-ack/checkpoint failure and replay retain a single downstream row"
+  ],
+  "required_checks": {
+    "console-contracts": "success",
+    "contracts-and-integration": "success",
+    "deployment-contracts": "success",
+    "kubernetes-smoke": "success"
+  },
+  "smokes": {
+    "compose": {
+      "minimum_isr": 2,
+      "outcomes": {
+        "202": 20
+      },
+      "reconciliation": {
+        "accepted": 20,
+        "passed": true,
+        "unresolved_ids": [],
+        "visible": 20
+      },
+      "replication_factor": 3,
+      "scheduled": 20,
+      "spool_ownership_mode": "10001:10001 700",
+      "summary_sha256": "6ed488167711348b8abfd8ef37e1678ac12080a270d80cd36a50e2fb50127676"
+    },
+    "kind": {
+      "minimum_isr": 1,
+      "outcomes": {
+        "202": 20
+      },
+      "reconciliation": {
+        "accepted": 20,
+        "passed": true,
+        "unresolved_ids": [],
+        "visible": 20
+      },
+      "replication_factor": 1,
+      "scheduled": 20,
+      "spool_ownership_mode": "10001:10001 700",
+      "summary_sha256": "f6c7d884eb6ca9fbcf57116d926d3a0f66c4183e7ea753bdddb479283108ea03"
+    }
+  },
+  "source_revision": "556cfe22739b7ecae8c265508a38b4d932b9fc1e",
+  "tree": "6b9c68defa30ff4e9ec65ff8e4df4c8b8b43c822",
+  "workflow_run": 40579394488,
+  "workflow_url": "https://github.com/GeekNandy/real-time-telemetry-data-platform/actions/runs/40579394488"
+}

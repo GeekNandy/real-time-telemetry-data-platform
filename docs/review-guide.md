@@ -18,3 +18,15 @@ unconfirmed spool records and deduplicated replay. The three-broker reference an
 the single-broker development configuration have different replication guarantees.
 
 Use the [contribution workflow](../CONTRIBUTING.md) for branch, check and merge requirements.
+
+## Independent review record
+
+An independent human reviewer should record their identity, reviewed source/tree,
+date and verdict. Review the 202 acknowledgement boundary, waiter/admission limits,
+timeout/cancellation ambiguity, checkpoint/replay ordering, effective broker policy,
+tenant deduplication and the scope of the fault evidence. For performance findings,
+check every rate/repetition, rejected outcomes, generator/observer health, resource
+quotas, profiling overhead and the limits of a shared-runner experiment.
+
+Link the completed review from the tracking issue. Automated analysis and owner
+merge authorization do not substitute for this record.

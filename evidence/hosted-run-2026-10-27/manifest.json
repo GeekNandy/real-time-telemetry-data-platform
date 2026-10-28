@@ -1,45 +1,60 @@
 {
-  "scope": "Recorded synthetic correctness checks against real Kafka, Schema Registry and PostgreSQL dependencies.",
-  "workflowUrl": "https://github.com/GeekNandy/real-time-telemetry-data-platform/actions/runs/40512112182",
-  "workflowRun": 40512112182,
-  "workflowAttempt": 2,
-  "sourceRevision": "a6c07ebd5789d1b85a712f4899218094f5c9acc7",
-  "executionRevision": "645a4d0c2007333523eedeb0980353c01f22a19c",
-  "executionTree": "d9213458cee0c4629c573ed924f2cdbf46e67280",
-  "artifactId": 12738841014,
+  "scope": "Recorded synthetic correctness checks with Kafka-confirmed HTTP acceptance, real Schema Registry and PostgreSQL dependencies.",
+  "workflowUrl": "https://github.com/GeekNandy/real-time-telemetry-data-platform/actions/runs/40579394488",
+  "workflowRun": 40579394488,
+  "workflowAttempt": 1,
+  "sourceRevision": "556cfe22739b7ecae8c265508a38b4d932b9fc1e",
+  "executionRevision": "5177b8bd4616f7370c4cf43c8e12e8b97038c026",
+  "executionTree": "6b9c68defa30ff4e9ec65ff8e4df4c8b8b43c822",
+  "artifactId": 12770071137,
   "observedDate": "2026-10-27",
   "checks": {
-    "javaCases": 93,
-    "unitContracts": 80,
-    "integrationCases": 13,
-    "clientCases": 8,
-    "browserCases": 8
+    "javaCases": 107,
+    "unitContracts": 92,
+    "integrationCases": 15,
+    "clientCases": 24,
+    "operatorBrowserCases": 8,
+    "recordedBrowserCases": 6,
+    "accessBrowserCases": 2
   },
-  "limits": "Twenty-event correctness smokes. Client timings include network and polling effects; they are not capacity measurements.",
+  "limits": "Twenty-event correctness smokes. Compose uses RF3/minISR2; kind uses a single development broker. Client timings do not establish capacity or controller/AZ high availability.",
   "files": {
     "compose-summary.json": {
       "artifactPath": "compose-smoke/http-contract/summary.json",
-      "sha256": "962eae8ca23d0e7550ddd9f11a871f8d5b4b55824d630451f8163c2e066bff11"
+      "sha256": "6ed488167711348b8abfd8ef37e1678ac12080a270d80cd36a50e2fb50127676"
     },
     "compose-requests.jsonl": {
       "artifactPath": "compose-smoke/http-contract/requests.jsonl",
-      "sha256": "7a097f544c256b461a06d59d50a41ec4b38ae503b0e9f808aa22cf6b9c70e088"
+      "sha256": "2c4fbb027b977230ccc86799f667059e30b4d445509c14f82f08b7cec757b766"
     },
     "kind-summary.json": {
       "artifactPath": "kind-smoke/http-contract/summary.json",
-      "sha256": "b6e0d489f9e151ad6dc7d17831459e1cff5f52dcaa4f3a41a6ae7966abefa2ba"
+      "sha256": "f6c7d884eb6ca9fbcf57116d926d3a0f66c4183e7ea753bdddb479283108ea03"
     },
     "kind-requests.jsonl": {
       "artifactPath": "kind-smoke/http-contract/requests.jsonl",
-      "sha256": "89cf2df5d01a744c1c55bbb3fd91071f1f2d761cb018474801058ee7b28ec052"
+      "sha256": "f430ffebd755c76637c2bca578a76055121ae963eaaa6cf3fb0e88c4ffe58285"
     },
     "browser.json": {
       "artifactPath": "compose-smoke/console/live-console.json",
-      "sha256": "546278fddb9f6f8b8f93ae4444ae073a890828f2bef388ce832d6c6ec6366d89"
+      "sha256": "0c7fb77247d29272557e7de8d0effe32e4d4a408534f8be631604190f8d5977a"
     },
     "observability.json": {
       "artifactPath": "compose-smoke/observability.json",
       "sha256": "cc434de595896a37aa2c47be9921005b83828657f91894fe4c898a154cd763d0"
+    }
+  },
+  "acceptanceBoundary": "Kafka acknowledgement and durable delivery checkpoint",
+  "environmentPolicies": {
+    "compose": {
+      "replicationFactor": 3,
+      "minimumInSyncReplicas": 2,
+      "producerAcks": "all"
+    },
+    "kind": {
+      "replicationFactor": 1,
+      "minimumInSyncReplicas": 1,
+      "producerAcks": "all"
     }
   }
 }

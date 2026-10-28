@@ -1,52 +1,49 @@
 # Verification evidence
 
-Verification results are tied to a tested source revision and execution environment.
+Verification results identify the tested source, execution revision and environment.
+The Kafka-confirmed runtime passed [CI 40579394488](https://github.com/GeekNandy/real-time-telemetry-data-platform/actions/runs/40579394488)
+on source `556cfe22739b`. Its merged revision is `3876a0e0d816`; the executed and
+merged trees both equal `6b9c68defa30ff4e9ec65ff8e4df4c8b8b43c822`.
 
-| Scope | Tested source | Passing run |
-| --- | --- | --- |
-| Platform contracts, integrations and deployment smokes | `1e51d882e394` | [CI 40362033941](https://github.com/GeekNandy/real-time-telemetry-data-platform/actions/runs/40362033941) |
-| Operator console, client contracts and browser workflows | `411b30e7c6d9` | [CI 40401774419](https://github.com/GeekNandy/real-time-telemetry-data-platform/actions/runs/40401774419) |
+All four required checks passed: client/browser contracts, Java integrations,
+deployment contracts and Kubernetes smoke. The [runtime evidence record](../evidence/replicated-acceptance-2026-10-27.json)
+contains suite counts, source mappings and deployment observations. Detailed
+reports are available as workflow artifacts.
 
-The [CI run index](../evidence/verification-runs.json) records selected passing
-runs with their tested source revisions. Detailed reports are published as
-workflow artifacts.
-
-## Verification gates
-
-| Layer | Gate |
+| Layer | Observed gate |
 | --- | --- |
-| Java unit/contracts | 73 cases: core 27, config 8, buffer 14, schemas 10, observability 1, service 13 |
-| Native integrations | Packaged HTTP/SIGKILL/replay, three-broker leader/minISR fault and real registry compatibility/restart |
-| PostgreSQL integrations | Ten real Docker-backed scenarios, including ID reconciliation, tenant scope, replay, commit gap, poison/DLT, dependency outages, retention and drain |
-| Registry transport regressions | Five actual HTTP cases, including headers followed by a stalled body and bounded oversized responses |
-| Buffer regressions | Retry reclamation after a durable checkpoint and already-absent delivered files without stranding the queue |
-| Startup polling | Two Python contracts for transient resets and the never-ready deadline |
-| Experiment client | Six Python contracts: valid reconciliation, missing IDs, mismatched query IDs, invalid receipts, truncated responses and invalid settings |
-| Deployment contracts | Helm lint, ten production guardrail cases and Kubernetes schema validation |
-| Compose runtime | Build/start both roles, private spool ownership/mode, twenty accepted and queryable event IDs |
-| Kubernetes runtime | Build image, rollout both roles in kind, private spool ownership/mode, twenty accepted/queryable IDs and collector restart |
-| AWS reference | Terraform formatting, provider validation and two mocked policy runs; no AWS credentials or resource creation |
+| Java unit/contracts | 92 cases, including bounded acknowledgement waiters and effective producer/topic policy |
+| Native integrations | Three cases: packaged HTTP/SIGKILL/replay, broker leader/minISR faults and real registry compatibility/restart |
+| PostgreSQL integrations | Twelve cases covering ID reconciliation, tenant scope, deduplication, commit gaps, poison/DLT, dependency outages, retention, drain, delayed acknowledgement and replicated collector-volume loss |
+| Buffer recovery | Quotas, checksums, ownership, child-JVM recovery and retryable reclamation after a durable checkpoint |
+| Registry transport | Five actual HTTP cases, including stalled bodies and oversized responses |
+| Browser/client contracts | 24 Node cases; eight operator-browser, six recorded-explorer and two protected-access workflows |
+| Startup and load clients | Two readiness retry contracts and six load/reconciliation contracts |
+| Compose runtime | Three data brokers, RF3/minISR2, twenty accepted/queryable IDs, private spool ownership, actual browser submission and authenticated observability provisioning |
+| Kubernetes runtime | Single development broker, rollout in kind, twenty accepted/queryable IDs, private spool ownership and collector restart |
+| Deployment policy | Helm lint, ten production guardrails, Kubernetes schema checks and two mocked Terraform policy runs |
 
-The Java build runs 86 distinct tests: 73 unit/contracts plus thirteen integration
-cases. The separate native core runner repeats the same 27 core contracts and
-must not be counted again. CI publishes Surefire/Failsafe and deployment reports.
+The Java reports contain **107 distinct tests: 92 unit/contracts and 15
+integrations, with zero failures, errors or skips**. The standalone native core
+runner repeats 27 existing cases and is not added to that count.
 
-The load client and container smokes validate response identity as well as HTTP
-status. Twenty-event deployment workloads establish correctness, not capacity.
-No end-to-end throughput, whole-service JFR finding, real AWS deployment,
-controller-quorum/AZ HA, restore result or independent human approval is claimed.
+HTTP 202 follows Kafka acknowledgement and a durable delivery checkpoint. The
+replicated integration removes the collector's local volume after 202, stops a
+broker and reconciles the accepted identities against PostgreSQL. It also checks
+refusal below minISR, cancellation, identical retries and replay across a real
+checkpoint write failure. Each accepted identity has one downstream row.
 
-Saved records retain their tested source revisions and observation dates. See the
-[evidence index](../evidence/README.md) for archived reports and revision mappings.
+The [hosted recording](../evidence/hosted-run-2026-10-27/manifest.json) retains
+original report bytes and their SHA-256 digests. Compose uses three broker
+replicas with minISR 2; kind uses one development broker. The two configurations
+have different replication guarantees.
 
-## Operator console extension
+Twenty-event smokes establish correctness, not capacity. Controller-quorum/AZ
+availability, real AWS deployment and restore exercises are outside these checks.
+Owner merge authorization and automated checks do not establish independent human
+review. See the [review guide](review-guide.md) for the review scope and the
+[performance protocol](performance.md) for measured-workload requirements.
 
-The operator-console change adds seven Java HTTP/metrics contracts, bringing the
-complete Java suite to 93 cases, plus eight Node client contracts and eight
-Chromium fixture workflows. Its Compose smoke also performs a real browser
-submission and matching PostgreSQL-backed lookup, verifies the fixed proxy
-allowlist and observer authorization, and checks automatic Grafana provisioning
-and both authenticated Prometheus scrapes. Existing twenty-event Compose and
-kind checks remain required. See [the console guide](console.md) for exact scope.
-The console PR's workflow and artifacts provide its own execution status;
-fixture screenshots are not deployment or capacity evidence.
+The [CI run index](../evidence/verification-runs.json) retains selected passing
+source mappings. Read archived reports against their recorded revisions and
+environments.

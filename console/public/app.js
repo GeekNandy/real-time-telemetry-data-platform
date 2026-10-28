@@ -259,7 +259,7 @@ $('event-form').addEventListener('submit', async event => {
     if (response.status !== 202 || !matchingEvent(response.data, value.eventId)) throw new ApiError(0, 'The acceptance receipt did not match. Delivery remains unconfirmed; retry the same event.');
     step('journey-submitted', `HTTP 202 · ${value.eventId}`, 'complete');
     currentAccepted = true;
-    step('journey-accepted', 'Receipt confirmed: synchronized append to collector volume', 'complete');
+    step('journey-accepted', 'Receipt confirmed: Kafka acknowledgement and durable checkpoint', 'complete');
     notice('Locally accepted. Query visibility has not yet been confirmed.', 'warn');
     $('send-event').textContent = 'Retry same event ↗';
     await checkVisibility(value, version, signal);
