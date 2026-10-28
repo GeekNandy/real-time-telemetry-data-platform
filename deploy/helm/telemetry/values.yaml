@@ -16,6 +16,7 @@ runtime:
   schemaRegistryUrl: ""
   issuer: ""
   audience: telemetry
+  trustedJwksOrigins: "" # Optional comma-separated HTTPS signing-key origins; issuer origin is allowed by default.
   kafkaSecurityProtocol: SASL_SSL
   kafkaSaslMechanism: PLAIN
   otlpEndpoint: ""

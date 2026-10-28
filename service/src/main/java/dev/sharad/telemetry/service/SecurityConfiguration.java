@@ -46,12 +46,36 @@ public class SecurityConfiguration {
         .build();
   }
 
+  @Bean(destroyMethod = "close")
+  IdentityHttpClient identityHttpClient(
+      @Value("${telemetry.security.mode:issuer}") String mode,
+      @Value("${telemetry.security.issuer:}") String issuer,
+      @Value("${telemetry.security.jwks-origins:}") String origins) {
+    return new IdentityHttpClient("demo".equals(mode) ? "https://unused.invalid" : issuer, origins);
+  }
+
   @Bean
-  ReactiveJwtDecoder jwtDecoder(
+  ReactiveJwtDecoder configuredJwtDecoder(
       @Value("${telemetry.security.mode:issuer}") String mode,
       @Value("${telemetry.security.issuer:}") String issuer,
       @Value("${telemetry.security.audience:telemetry}") String audience,
-      @Value("${telemetry.security.demo-secret:}") String secret) {
+      @Value("${telemetry.security.demo-secret:}") String secret,
+      IdentityHttpClient identity) {
+    return createDecoder(mode, issuer, audience, secret, identity.client());
+  }
+
+  ReactiveJwtDecoder jwtDecoder(String mode, String issuer, String audience, String secret) {
+    if (!"demo".equals(mode))
+      throw new IllegalArgumentException("Issuer verification requires bounded identity transport");
+    return createDecoder(mode, issuer, audience, secret, null);
+  }
+
+  static ReactiveJwtDecoder createDecoder(
+      String mode,
+      String issuer,
+      String audience,
+      String secret,
+      org.springframework.web.reactive.function.client.WebClient identity) {
     if (issuer.isBlank()) throw new IllegalArgumentException("JWT issuer is required");
     NimbusReactiveJwtDecoder decoder;
     if ("demo".equals(mode)) {
@@ -64,7 +88,7 @@ public class SecurityConfiguration {
               .macAlgorithm(MacAlgorithm.HS256)
               .build();
     } else if ("issuer".equals(mode)) {
-      decoder = NimbusReactiveJwtDecoder.withIssuerLocation(issuer).build();
+      decoder = NimbusReactiveJwtDecoder.withIssuerLocation(issuer).webClient(identity).build();
     } else {
       throw new IllegalArgumentException("Unknown JWT verification mode");
     }
@@ -81,6 +105,11 @@ public class SecurityConfiguration {
             audienceValidator,
             tenantValidator,
             expiryRequired));
-    return decoder;
+    return token ->
+        token.length() > 8192
+            ? reactor.core.publisher.Mono.error(
+                new org.springframework.security.oauth2.jwt.BadJwtException(
+                    "Bearer token exceeds limit"))
+            : decoder.decode(token);
   }
 }
