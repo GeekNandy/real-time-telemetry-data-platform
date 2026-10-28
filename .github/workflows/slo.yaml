@@ -1,0 +1,92 @@
+name: Workload SLO experiment
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/slo.yaml
+      - scripts/slo-run.py
+      - scripts/slo-report.py
+      - scripts/slo-release.py
+      - scripts/test-slo-report.py
+      - tools/slo/gc-safe.jfc
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Pilot checks harness; full measures repeated sustained workloads, soak and burst
+        required: true
+        default: pilot
+        type: choice
+        options: [pilot, full]
+permissions:
+  contents: read
+concurrency:
+  group: slo-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      mode: ${{ steps.plan.outputs.mode }}
+    steps:
+      - id: plan
+        env:
+          SLO_MODE: ${{ github.event_name == 'pull_request' && 'pilot' || inputs.mode }}
+        run: |
+          python3 - <<'PY'
+          import json,os
+          mode=os.environ['SLO_MODE'];assert mode in ('pilot','full')
+          cases=[{'profile':p,'repeat':r} for p in ('reference','scale') for r in (1,2,3)]+[{'profile':'soak','repeat':1},{'profile':'burst','repeat':1}] if mode=='full' else [{'profile':'reference','repeat':1}]
+          with open(os.environ['GITHUB_OUTPUT'],'a') as output:
+              output.write('matrix='+json.dumps({'include':cases})+'\nmode='+mode+'\n')
+          PY
+  experiment:
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Verify raw audit, resource, heap and aggregate release contracts
+        run: |
+          python3 scripts/test-slo-profiles.py
+          python3 scripts/test-slo-report.py
+      - name: Measure fresh runtimes with isolated generator CPU and fixed SLOs
+        run: python3 scripts/slo-run.py --mode '${{ needs.plan.outputs.mode }}' --profile '${{ matrix.profile }}' --repeat '${{ matrix.repeat }}' --output 'data/slo/${{ matrix.profile }}-${{ matrix.repeat }}'
+      - name: Retain synthetic raw audits and bounded measurement evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: slo-${{ needs.plan.outputs.mode }}-${{ matrix.profile }}-${{ matrix.repeat }}
+          path: data/slo/**/artifact/
+          retention-days: 2
+          if-no-files-found: error
+  release-gate:
+    if: always()
+    needs: [plan,experiment]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          pattern: slo-${{ needs.plan.outputs.mode }}-*
+          path: data/slo-release
+      - name: Enforce complete evidence and every tuned workload gate
+        run: python3 scripts/slo-release.py --root data/slo-release --mode '${{ needs.plan.outputs.mode }}' --output data/slo-release/release.json
+      - name: Retain aggregate release decision
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: slo-release-${{ needs.plan.outputs.mode }}
+          path: data/slo-release/release.json
+          retention-days: 2
+          if-no-files-found: warn
