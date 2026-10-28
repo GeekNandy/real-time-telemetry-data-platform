@@ -168,3 +168,26 @@ published with the PR CI reports; they are not a record of production on-call wo
 
 Registry calls have a deadline for the full response body. A delivered checkpoint
 and file reclamation are separate recoverable states; failed reclamation is retried.
+
+
+## Operational exercise protocol
+
+Kubernetes CI installs checksum-pinned Cilium in an ephemeral kind cluster with
+its default CNI disabled. Application pods are admitted under the restricted Pod
+Security Standard; development dependencies use a separate namespace. Six probes
+require healthy allowed ingress/dependency paths, reject wrong labels/namespaces,
+and deny egress to an independently verified healthy unapproved target. HTTP
+401/403 responses are not accepted as evidence of network isolation.
+
+The exercise reconciles synthetic acknowledgements during a worker rolling
+restart, verifies that a deliberately invalid image leaves old replicas available,
+undoes the rollout, scales workers out/in, and reconciles a fresh accepted set.
+Collector restart checks its retained process-owned WAL volume. Three-broker
+and insufficient-ISR fault contracts run separately. Passing CI proves these
+behaviors on its cited source, not multi-AZ or production cloud operation.
+
+Compose CI also takes a logical PostgreSQL backup after its synthetic journeys,
+restores it into a separate scratch database and compares every complete event
+row. A truncated archive must be rejected. Both archives and the scratch database
+are removed; counts, digest and elapsed time remain. This same-instance logical
+restore does not establish production backup policy or cross-region RPO/RTO.

@@ -16,6 +16,8 @@ own rationale and review; retain the original results and revision.
 | Soak | 500 events/s | 30 minutes | Same as scale | Stability and retained-heap regression guard |
 | Burst | 500 → 1000 → 500 events/s | Fixed 94-second ramp/hold sequence | Same as scale | Bounded overload and recovery |
 
+All phases use G1 with a 40% initial / 65% maximum RAM budget and a 50 ms soft GC pause target; the exact JVM flags are retained in each runtime override. A pause target is not a latency guarantee.
+
 All profiles use eight synthetic tenants, schema-valid 512-byte JSON envelopes,
 three Kafka data brokers with RF3/minISR2 and `acks=all`, stable event identities,
 10% trace sampling and a separate warmup. String padding controls the wire size;

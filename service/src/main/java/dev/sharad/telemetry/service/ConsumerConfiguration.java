@@ -42,6 +42,11 @@ public class ConsumerConfiguration {
     var factory = new ConcurrentKafkaListenerContainerFactory<String, byte[]>();
     factory.setConsumerFactory(consumers);
     factory.setCommonErrorHandler(errors);
+    Object configured = consumers.getConfigurationProperties().get("max.poll.records");
+    int maximum = configured == null ? 500 : Integer.parseInt(configured.toString());
+    if (maximum < 1 || maximum > 256)
+      throw new IllegalArgumentException("max.poll.records must be explicit and within 1..256");
+    factory.setBatchListener(true);
     factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL_IMMEDIATE);
     factory.getContainerProperties().setSyncCommits(true);
     return factory;

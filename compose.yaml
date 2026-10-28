@@ -19,7 +19,7 @@ x-platform-env: &platform-env
   JWT_ISSUER: http://localhost:8080
   DEMO_JWT_SECRET: ${DEMO_JWT_SECRET:?Run scripts/dev-up.sh first}
   OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
-  JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=65 -XX:ActiveProcessorCount=1
+  JAVA_TOOL_OPTIONS: -XX:+UseG1GC -XX:InitialRAMPercentage=40 -XX:MaxRAMPercentage=65 -XX:MaxGCPauseMillis=50 -XX:ActiveProcessorCount=1
 services:
   kafka:
     image: apache/kafka:4.0.0

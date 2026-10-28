@@ -47,3 +47,5 @@ assert summary['accepted_reconciliation']['visible']==20, summary['accepted_reco
 PY_SMOKE
 python3 scripts/check-observability.py --password-file "$telemetry_secrets/auth/grafana-admin-password" --output "$telemetry_reports/observability.json"
 TELEMETRY_CONSOLE_TOKEN_FILE="$telemetry_secrets/token" TELEMETRY_BROWSER_REPORTS="$telemetry_reports/console" node console/test/live.mjs
+
+python3 scripts/test-postgres-restore.py --project "$telemetry_project" --env-file "$telemetry_secrets/env" --output "$telemetry_reports/restore.json"

@@ -40,7 +40,7 @@ def metrics(token,url,path):
     with urllib.request.urlopen(request,timeout=3) as response:
         body=response.read(2097153)
         if len(body)>2097152:raise ValueError('Metrics response exceeds the bound')
-    lines=[line for line in body.decode().splitlines() if line.startswith(('telemetry_append_phase_','telemetry_dispatch_'))]
+    lines=[line for line in body.decode().splitlines() if line.startswith(('telemetry_append_phase_','telemetry_dispatch_','telemetry_persistence_batch_'))]
     path.write_text('\n'.join(lines)+'\n')
 
 
@@ -126,7 +126,7 @@ def phase(args,name,env_file,private):
     for dependency in ('kafka','kafka2','kafka3','registry','postgres','jaeger'):
         override['services'][dependency]={'cpuset':args.service_cpus}
     for role in ('collector','worker'):
-        options=f'-XX:MaxRAMPercentage=65 -XX:ActiveProcessorCount={config["role_cpus"]}'
+        options=f'-XX:+UseG1GC -XX:InitialRAMPercentage=40 -XX:MaxRAMPercentage=65 -XX:MaxGCPauseMillis=50 -XX:ActiveProcessorCount={config["role_cpus"]}'
         if profiled:
             options+=f' -XX:StartFlightRecording=name=runtime,filename=/profiles/{role}.jfr,settings=/app/profile-safe.jfc,dumponexit=true,maxsize=128m,maxage=60m'
         if args.profile=='soak':

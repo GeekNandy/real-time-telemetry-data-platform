@@ -137,6 +137,7 @@ class PlatformIT {
   @Autowired AvroEventCodec codec;
   @Autowired RetentionMaintenance retention;
   @Autowired IngestionEngine engine;
+  @Autowired io.micrometer.core.instrument.MeterRegistry meters;
   private final HttpClient http =
       HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
 
@@ -380,6 +381,48 @@ class PlatformIT {
     assertEquals(202, response.get(10, TimeUnit.SECONDS).statusCode());
     awaitAllSourceCommitted();
     assertEquals(1, rows(event));
+  }
+
+  @Test
+  @Order(11)
+  void batchRecoveryCommitsOnlyStoredPrefixesAndConfirmedDeadLetters() throws Exception {
+    awaitDrained();
+    awaitAllSourceCommitted();
+    var stopped = new CountDownLatch(1);
+    listeners.stop(stopped::countDown);
+    assertTrue(stopped.await(20, TimeUnit.SECONDS));
+    var events =
+        List.of(
+            event("batch-prefix"),
+            event("batch-prefix"),
+            event("batch-suffix"),
+            event("batch-suffix"));
+    byte[] poison = "synthetic-batch-poison".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    try (var deadLetters = deadLetters()) {
+      kafka
+          .send(TOPIC, 0, events.get(0).partitionKey(), codec.encode(events.get(0)))
+          .get(10, TimeUnit.SECONDS);
+      kafka
+          .send(TOPIC, 0, events.get(1).partitionKey(), codec.encode(events.get(1)))
+          .get(10, TimeUnit.SECONDS);
+      kafka.send(TOPIC, 0, "synthetic-poison", poison).get(10, TimeUnit.SECONDS);
+      kafka
+          .send(TOPIC, 0, events.get(2).partitionKey(), codec.encode(events.get(2)))
+          .get(10, TimeUnit.SECONDS);
+      kafka
+          .send(TOPIC, 0, events.get(3).partitionKey(), codec.encode(events.get(3)))
+          .get(10, TimeUnit.SECONDS);
+      assertFalse(allSourceCommitted());
+      listeners.start();
+      awaitDeadLetter(deadLetters, poison);
+      awaitAllSourceCommitted();
+      for (var event : events) assertEquals(1, rows(event));
+      assertTrue(
+          meters.get("telemetry.persistence.batch.size").summary().max() >= 5,
+          "The failed middle record must be exercised within a real multi-record poll batch");
+    } finally {
+      if (!listeners.isRunning()) listeners.start();
+    }
   }
 
   @Test
