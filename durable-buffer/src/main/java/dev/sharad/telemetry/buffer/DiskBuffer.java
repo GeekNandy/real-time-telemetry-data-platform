@@ -42,6 +42,40 @@ public final class DiskBuffer implements AutoCloseable {
   private final PlatformSettings.Buffer limits;
   private final FileChannel lockChannel;
   private final FileLock processLock;
+  private final Durability durability;
+  // Never acquire an operation lock while holding the state monitor. Close takes them in this
+  // order so the volume lock cannot be released while either protocol is using the directory.
+  private final Object appendLock = new Object();
+  private final Object checkpointLock = new Object();
+
+  interface Durability {
+    void writeForced(Path path, byte[] content) throws IOException;
+
+    void forceDirectory(Path directory) throws IOException;
+  }
+
+  static final Durability FILESYSTEM =
+      new Durability() {
+        @Override
+        public void writeForced(Path path, byte[] content) throws IOException {
+          try (var channel =
+              FileChannel.open(path, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
+            ByteBuffer data = ByteBuffer.wrap(content);
+            while (data.hasRemaining()) channel.write(data);
+            channel.force(true);
+          }
+          if (Files.getFileStore(path).supportsFileAttributeView("posix")) {
+            Files.setPosixFilePermissions(path, PosixFilePermissions.fromString("rw-------"));
+          }
+        }
+
+        @Override
+        public void forceDirectory(Path directory) throws IOException {
+          try (var channel = FileChannel.open(directory, StandardOpenOption.READ)) {
+            channel.force(true);
+          }
+        }
+      };
 
   private record Pending(Path path, Instant createdAt, long bytes) {}
 
@@ -77,8 +111,14 @@ public final class DiskBuffer implements AutoCloseable {
       long oldestAgeMillis) {}
 
   public DiskBuffer(Path directory, PlatformSettings.Buffer limits) throws IOException {
+    this(directory, limits, FILESYSTEM);
+  }
+
+  DiskBuffer(Path directory, PlatformSettings.Buffer limits, Durability durability)
+      throws IOException {
     this.directory = directory.toAbsolutePath().normalize();
     this.limits = limits;
+    this.durability = java.util.Objects.requireNonNull(durability);
     Files.createDirectories(this.directory);
     if (Files.getFileStore(this.directory).supportsFileAttributeView("posix")) {
       Files.setPosixFilePermissions(this.directory, PosixFilePermissions.fromString("rwx------"));
@@ -105,64 +145,87 @@ public final class DiskBuffer implements AutoCloseable {
     }
   }
 
-  public synchronized Entry append(String key, byte[] payload, Map<String, String> traceHeaders)
+  public Entry append(String key, byte[] payload, Map<String, String> traceHeaders)
       throws IOException {
-    requireOpen();
     if (key == null || key.length() > 256 || key.isBlank() || payload == null) {
       throw new IllegalArgumentException("Invalid buffered record");
     }
     validateTraceHeaders(traceHeaders);
     if (payload.length > limits.maxRecordBytes())
       throw new IllegalArgumentException("Payload exceeds record limit");
-    long sequence = nextSequence;
-    Instant created = Instant.now();
-    byte[] frame = encode(sequence, created, key, payload, traceHeaders);
-    if (frame.length > limits.maxRecordBytes())
-      throw new IllegalArgumentException("Frame exceeds record limit");
-    if (pending.size() >= limits.maxRecords() || frame.length > limits.maxBytes() - usedBytes)
-      throw new Full();
-    Path temporary = directory.resolve(String.format("%020d.tmp", sequence));
-    Path committed = directory.resolve(String.format("%020d.evt", sequence));
-    try {
-      writeForced(temporary, frame);
-      Files.move(temporary, committed, StandardCopyOption.ATOMIC_MOVE);
-      // Account for the file even if the following directory sync fails. Its client outcome is
-      // ambiguous.
-      pending.put(sequence, new Pending(committed, created, frame.length));
-      usedBytes += frame.length;
-      nextSequence++;
-      forceDirectory();
-      notifyAll();
-      return new Entry(sequence, created, key, payload, traceHeaders);
-    } finally {
-      Files.deleteIfExists(temporary);
+    synchronized (appendLock) {
+      long sequence;
+      synchronized (this) {
+        requireOpen();
+        sequence = nextSequence;
+      }
+      Instant created = Instant.now();
+      byte[] frame = encode(sequence, created, key, payload, traceHeaders);
+      if (frame.length > limits.maxRecordBytes())
+        throw new IllegalArgumentException("Frame exceeds record limit");
+      synchronized (this) {
+        if (pending.size() >= limits.maxRecords() || frame.length > limits.maxBytes() - usedBytes)
+          throw new Full();
+      }
+      // Only this appender can consume budget; concurrent checkpoints can only release it.
+      Path temporary = directory.resolve(String.format("%020d.tmp", sequence));
+      Path committed = directory.resolve(String.format("%020d.evt", sequence));
+      try {
+        durability.writeForced(temporary, frame);
+        Files.move(temporary, committed, StandardCopyOption.ATOMIC_MOVE);
+        try {
+          durability.forceDirectory(directory);
+        } finally {
+          // A renamed file consumes budget even when directory sync fails and the append outcome
+          // is ambiguous. It becomes visible only after that sync attempt finishes.
+          synchronized (this) {
+            pending.put(sequence, new Pending(committed, created, frame.length));
+            usedBytes += frame.length;
+            nextSequence++;
+            notifyAll();
+          }
+        }
+        return new Entry(sequence, created, key, payload, traceHeaders);
+      } finally {
+        Files.deleteIfExists(temporary);
+      }
     }
   }
 
-  public synchronized Optional<Entry> peek() throws IOException {
-    requireOpen();
-    return pending.isEmpty()
-        ? Optional.empty()
-        : Optional.of(read(pending.firstEntry().getValue().path()));
+  public Optional<Entry> peek() throws IOException {
+    synchronized (checkpointLock) {
+      Path head;
+      synchronized (this) {
+        requireOpen();
+        head = pending.isEmpty() ? null : pending.firstEntry().getValue().path();
+      }
+      return head == null ? Optional.empty() : Optional.of(read(head));
+    }
   }
 
   /** Read a bounded prefix. A large head is returned alone so a valid record cannot be stranded. */
-  public synchronized List<Entry> peekBatch(int maxRecords, long maxBytes) throws IOException {
-    requireOpen();
+  public List<Entry> peekBatch(int maxRecords, long maxBytes) throws IOException {
     if (maxRecords < 1
         || maxRecords > MAX_BATCH_RECORDS
         || maxBytes < 1
         || maxBytes > MAX_BATCH_BYTES)
       throw new IllegalArgumentException("Invalid spool batch limits");
-    var result = new ArrayList<Entry>();
-    long bytes = 0;
-    for (var record : pending.values()) {
-      if (result.size() == maxRecords || (!result.isEmpty() && record.bytes() > maxBytes - bytes))
-        break;
-      result.add(read(record.path()));
-      bytes += record.bytes();
+    synchronized (checkpointLock) {
+      var selected = new ArrayList<Pending>();
+      synchronized (this) {
+        requireOpen();
+        long bytes = 0;
+        for (var record : pending.values()) {
+          if (selected.size() == maxRecords
+              || (!selected.isEmpty() && record.bytes() > maxBytes - bytes)) break;
+          selected.add(record);
+          bytes += record.bytes();
+        }
+      }
+      var result = new ArrayList<Entry>();
+      for (var record : selected) result.add(read(record.path()));
+      return List.copyOf(result);
     }
-    return List.copyOf(result);
   }
 
   /** Wait without polling or holding the spool monitor across a sleep. */
@@ -181,30 +244,39 @@ public final class DiskBuffer implements AutoCloseable {
   }
 
   /** Only the head can advance. Persist the delivered checkpoint before reclaiming its file. */
-  public synchronized void acknowledge(long sequence) throws IOException {
+  public void acknowledge(long sequence) throws IOException {
     acknowledgeBatch(List.of(sequence));
   }
 
   /** Checkpoint only a fully confirmed prefix; one durable checkpoint covers the complete batch. */
-  public synchronized void acknowledgeBatch(List<Long> sequences) throws IOException {
-    requireOpen();
+  public void acknowledgeBatch(List<Long> sequences) throws IOException {
     if (sequences == null || sequences.isEmpty() || sequences.size() > MAX_BATCH_RECORDS)
       throw new IllegalArgumentException("Invalid checkpoint batch");
-    long previous = 0;
-    var unconfirmed = pending.tailMap(deliveredSequence, false).keySet().iterator();
-    for (Long candidate : sequences) {
-      if (candidate == null || candidate <= previous)
-        throw new IllegalArgumentException("Checkpoint sequences must increase");
-      previous = candidate;
-      if (candidate > deliveredSequence
-          && (!unconfirmed.hasNext() || unconfirmed.next().longValue() != candidate))
-        throw new IllegalArgumentException("Out-of-order acknowledgement prefix");
-    }
-    long sequence = previous;
-    if (sequence <= deliveredSequence) {
+    sequences = new ArrayList<>(sequences);
+    synchronized (checkpointLock) {
+      long sequence;
+      boolean alreadyDelivered;
+      synchronized (this) {
+        requireOpen();
+        long previous = 0;
+        var unconfirmed = pending.tailMap(deliveredSequence, false).keySet().iterator();
+        for (Long candidate : sequences) {
+          if (candidate == null || candidate <= previous)
+            throw new IllegalArgumentException("Checkpoint sequences must increase");
+          previous = candidate;
+          if (candidate > deliveredSequence
+              && (!unconfirmed.hasNext() || unconfirmed.next().longValue() != candidate))
+            throw new IllegalArgumentException("Out-of-order acknowledgement prefix");
+        }
+        sequence = previous;
+        alreadyDelivered = sequence <= deliveredSequence;
+      }
+      if (!alreadyDelivered) writeCheckpoint(sequence);
       reclaimDelivered();
-      return;
     }
+  }
+
+  private void writeCheckpoint(long sequence) throws IOException {
     Path checkpointTemporary = directory.resolve("checkpoint.tmp");
     byte[] sequenceBytes = ByteBuffer.allocate(Long.BYTES).putLong(sequence).array();
     var crc = new CRC32C();
@@ -216,32 +288,39 @@ public final class DiskBuffer implements AutoCloseable {
             .putInt((int) crc.getValue())
             .array();
     try {
-      writeForced(checkpointTemporary, checkpoint);
+      durability.writeForced(checkpointTemporary, checkpoint);
       Files.move(
           checkpointTemporary,
           directory.resolve("checkpoint"),
           StandardCopyOption.ATOMIC_MOVE,
           StandardCopyOption.REPLACE_EXISTING);
-      forceDirectory();
+      durability.forceDirectory(directory);
     } finally {
       Files.deleteIfExists(checkpointTemporary);
     }
-    deliveredSequence = sequence;
-    reclaimDelivered();
+    synchronized (this) {
+      deliveredSequence = sequence;
+    }
   }
 
   /** A durable checkpoint and successful file reclamation are separate states. */
   private void reclaimDelivered() throws IOException {
     boolean removed = false;
-    while (!pending.isEmpty() && pending.firstKey() <= deliveredSequence) {
-      var head = pending.firstEntry();
+    for (; ; ) {
+      Map.Entry<Long, Pending> head;
+      synchronized (this) {
+        head = pending.firstEntry();
+        if (head == null || head.getKey() > deliveredSequence) break;
+      }
       // A prior attempt may have deleted the file before its directory sync failed.
       Files.deleteIfExists(head.getValue().path());
-      pending.remove(head.getKey());
-      usedBytes -= head.getValue().bytes();
+      synchronized (this) {
+        pending.remove(head.getKey());
+        usedBytes -= head.getValue().bytes();
+      }
       removed = true;
     }
-    if (removed) forceDirectory();
+    if (removed) durability.forceDirectory(directory);
   }
 
   public synchronized Snapshot snapshot() {
@@ -305,7 +384,7 @@ public final class DiskBuffer implements AutoCloseable {
           "Existing backlog exceeds configured budget; restore its original limits to drain");
     }
     nextSequence = Math.max(deliveredSequence, pending.isEmpty() ? 0 : pending.lastKey()) + 1;
-    forceDirectory();
+    durability.forceDirectory(directory);
   }
 
   private byte[] encode(
@@ -387,35 +466,23 @@ public final class DiskBuffer implements AutoCloseable {
         });
   }
 
-  private void writeForced(Path path, byte[] content) throws IOException {
-    try (var channel =
-        FileChannel.open(path, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
-      ByteBuffer data = ByteBuffer.wrap(content);
-      while (data.hasRemaining()) channel.write(data);
-      channel.force(true);
-    }
-    if (Files.getFileStore(path).supportsFileAttributeView("posix")) {
-      Files.setPosixFilePermissions(path, PosixFilePermissions.fromString("rw-------"));
-    }
-  }
-
-  private void forceDirectory() throws IOException {
-    try (var channel = FileChannel.open(directory, StandardOpenOption.READ)) {
-      channel.force(true);
-    }
-  }
-
   private void requireOpen() throws IOException {
     if (closed) throw new IOException("Buffer is closed");
   }
 
   @Override
-  public synchronized void close() throws IOException {
-    if (closed) return;
-    closed = true;
-    notifyAll();
-    processLock.release();
-    lockChannel.close();
+  public void close() throws IOException {
+    synchronized (appendLock) {
+      synchronized (checkpointLock) {
+        synchronized (this) {
+          if (closed) return;
+          closed = true;
+          notifyAll();
+        }
+        processLock.release();
+        lockChannel.close();
+      }
+    }
   }
 
   public static final class Full extends IOException {
