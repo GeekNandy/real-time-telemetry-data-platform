@@ -5,6 +5,8 @@ Each record identifies its tested source revision, observation date and executio
 | Record | Contents |
 | --- | --- |
 | [verification-runs.json](verification-runs.json) | Selected passing CI runs with tested source revisions and available merge metadata |
+| [capacity-2026-10-28/results.json](capacity-2026-10-28/results.json) | All 27 measured phases, workload budgets, acceptance comparisons and collector/worker JFR aggregates |
+| [capacity-2026-10-28/provenance.json](capacity-2026-10-28/provenance.json) | Nine environments, image/filesystem identities, artifact digests and raw-request audits |
 | [replicated-acceptance-2026-10-27.json](replicated-acceptance-2026-10-27.json) | Kafka-confirmed acceptance, 107 Java cases, replicated failure scope and deployment observations |
 | [hosted-run-2026-10-27/manifest.json](hosted-run-2026-10-27/manifest.json) | Original deployment/browser reports and digests used by the protected recorded-run explorer |
 | [ci-2026-10-26.json](ci-2026-10-26.json) | Dated CI job outcomes, reconciliation results and artifact identifiers |

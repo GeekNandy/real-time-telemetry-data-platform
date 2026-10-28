@@ -1,5 +1,5 @@
 {
-  "observed_date": "2026-10-27",
+  "observed_date": "2026-10-28",
   "scope": "Selected passing CI runs with tested source revisions and available merge metadata; complete workflow histories and logs are available on GitHub.",
   "runs": [
     {
@@ -76,6 +76,21 @@
       "merge": "3876a0e0d816f30385e122b36e523c86348d8df8",
       "tree": "6b9c68defa30ff4e9ec65ff8e4df4c8b8b43c822",
       "ci_run": 40579394488
+    },
+    {
+      "pr": 19,
+      "head": "585ce966a81ac092750e87b9b2772ee4fced7b04",
+      "merge": "09832b42d2cb0edb25ee11748b45c3adff5edaf4",
+      "tree": "2815b38cf9301d9a7af5e2777e021bf93d5c4653",
+      "ci_run": 40636550094,
+      "pilot_run": 40636550220
+    },
+    {
+      "pr": 20,
+      "head": "60f2d253b605f5a996fffc42919a0153d33c3ef2",
+      "merge": "082ad252a7f621c04dc47f2f96b187b91750a014",
+      "tree": "e7d02bf42e3886aa757fb102b7b7c6fea85a3855",
+      "ci_run": 40639540262
     }
   ]
 }

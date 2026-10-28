@@ -1,6 +1,6 @@
 # Performance and profiling protocol
 
-No pipeline throughput, end-to-end p99 or production capacity is claimed.
+The [measured results](performance-results.md) publish bounded shared-runner workload and whole-service JFR evidence. Production capacity and end-to-end persistence p99 remain unestablished.
 
 ## HTTP experiment
 
@@ -66,7 +66,7 @@ Use `jfr summary` and JDK Mission Control to inspect CPU samples, allocation,
 lock/park contention, filesystem latency and GC. Compare profiled and unprofiled
 runs; sampling changes the workload. Review recordings before sharing: disabling
 the listed metadata events is not a guarantee that every diagnostic is free of
-sensitive information. No whole-service JFR finding is published yet.
+sensitive information. Measured collector/worker findings are published in the [experiment report](performance-results.md).
 
 ## Reproducible CI experiment
 
