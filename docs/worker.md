@@ -24,10 +24,31 @@ Rows are removed in bounded sweeps after thirty days by default, measured from
 storage time. Deduplication is bounded by retention of identity/fingerprint rows.
 Deleting a database row does not erase Kafka, DLT, spool files or backups.
 
-The integration profile requires Docker and verifies all ten PostgreSQL cases,
+The integration profile requires Docker and verifies PostgreSQL failure paths,
 plus real collector/broker/registry recovery. It does not silently skip missing Docker.
 
 ```bash
 ./mvnw --batch-mode --no-transfer-progress -f tools/schema-registry-runtime/pom.xml org.apache.maven.plugins:maven-dependency-plugin:3.9.0:build-classpath -Dmdep.outputFile=target/classpath.txt
 ./mvnw --batch-mode --no-transfer-progress -Pintegration verify
 ```
+
+## Bounded poll checkpoints
+
+The listener processes each poll sequentially, with fifty records by default and
+a startup-validated hard cap of 256. It commits offsets synchronously once after
+all transactions in that poll complete. A failure identifies its exact index:
+only already-stored preceding records may advance. Retryable database/registry
+failures preserve the failed record and suffix. Poison data and collisions still
+require confirmed DLT publication before the recovered offset advances. A commit
+failure replays the already-stored batch through tenant/event deduplication.
+No parallel record processing is allowed inside this indexed-failure contract.
+
+`telemetry.persistence.batch.size` and `telemetry.persistence.batch.commit` expose
+bounded batch size and offset-commit timing without event or tenant labels. Unit
+contracts check partial failures, poison, replay and bounds; the real Kafka/DB
+integration injects a poison record between durable prefix and valid suffix rows
+in one multi-record poll and reconciles recovery.
+
+Container profiles use G1 with explicit initial/maximum heap percentages and a
+soft pause target. Workload SLOs remain measured outcomes; JVM targets alone do
+not establish latency. See [the fixed SLO protocol](slo.md).
