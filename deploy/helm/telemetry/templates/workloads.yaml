@@ -56,6 +56,7 @@ spec:
             - {name: SCHEMA_REGISTRY_URL, value: {{ $root.Values.runtime.schemaRegistryUrl | quote }}}
             - {name: JWT_ISSUER, value: {{ $root.Values.runtime.issuer | quote }}}
             - {name: JWT_AUDIENCE, value: {{ $root.Values.runtime.audience | quote }}}
+            - {name: JWT_TRUSTED_JWKS_ORIGINS, value: {{ $root.Values.runtime.trustedJwksOrigins | quote }}}
             - {name: KAFKA_SECURITY_PROTOCOL, value: {{ $root.Values.runtime.kafkaSecurityProtocol | quote }}}
             - {name: KAFKA_SASL_MECHANISM, value: {{ $root.Values.runtime.kafkaSaslMechanism | quote }}}
             - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ $root.Values.runtime.otlpEndpoint | quote }}}

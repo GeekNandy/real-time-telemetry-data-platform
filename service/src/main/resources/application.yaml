@@ -78,4 +78,5 @@ telemetry:
     mode: ${JWT_MODE:issuer}
     issuer: ${JWT_ISSUER:}
     audience: ${JWT_AUDIENCE:telemetry}
+    jwks-origins: ${JWT_TRUSTED_JWKS_ORIGINS:}
     demo-secret: ${DEMO_JWT_SECRET:}
