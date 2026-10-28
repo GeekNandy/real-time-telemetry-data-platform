@@ -97,6 +97,20 @@ def retained_heap(profiles,artifact,config,end):
     return results
 
 
+def drain_warmup(compose,token,directory):
+    started=time.monotonic();stable=0
+    while time.monotonic()-started<900:
+        observed=CAPACITY.operations(token,'http://127.0.0.1:8080')
+        samples=REPORT.CAPACITY.read_jsonl(directory/'source-lag.raw.log')
+        last=samples[-1] if samples else {}
+        fresh=last.get('available') and time.time()*1000-REPORT.millis(last['observed_at'])<10000
+        if observed and observed.get('bufferRecords')==0 and fresh and last['lag_records']==0:stable+=1
+        else:stable=0
+        if stable>=2:return {'drain_seconds':round(time.monotonic()-started,3),'zero_lag_samples':stable}
+        time.sleep(2)
+    raise RuntimeError('Warmup did not drain its durable backlog within the bound')
+
+
 def phase(args,name,env_file,private):
     directory=args.output/name;directory.mkdir()
     artifact=args.output/'artifact'/name;artifact.mkdir(parents=True)
@@ -147,12 +161,16 @@ def phase(args,name,env_file,private):
         warmup.pop('stages',None)
         warmup_status=client(warmup,private,directory/'warmup.log',args)
         warmup_summary,warmup_rows=TOOL.audit(directory/'warmup.log',warmup)
+        warmup_drain=drain_warmup(compose,credentials[0]['token'],directory)
         warm_manifest=[{key:r[key] for key in ('id','tenant_slot','http_status')} for r in warmup_rows]
         warm_manifest.sort(key=lambda r:r['http_status']!=202)
         warm_reconciliation=client(dict(warmup,mode='reconcile'),private,directory/'warmup-reconcile.log',args,warm_manifest)
         TOOL.reconcile_audit(directory/'warmup-reconcile.log',warm_manifest)
         if warm_reconciliation:raise RuntimeError('Warmup accepted-ID reconciliation failed')
-        if warmup_status or any(not r['receipt_valid'] for r in warmup_rows):raise RuntimeError('Warmup must produce valid receipts without client drops')
+        if TOOL.value(warmup_summary,'contract_failures') or any(r['http_status']==202 and not r['receipt_valid'] for r in warmup_rows):
+            raise RuntimeError('Warmup violated identity/content contracts')
+        if name!='baseline' and (warmup_status or any(not r['receipt_valid'] for r in warmup_rows)):
+            raise RuntimeError('Tuned warmup must produce valid receipts without client drops')
         for role,url in [('collector',config['collector_url']),('worker',config['worker_url'])]:
             metrics(credentials[0]['token'],url,artifact/(role+'-histograms-before.prom'))
         measured_status=client(config,private,directory/'load.log',args)
@@ -183,6 +201,8 @@ def phase(args,name,env_file,private):
             eligible=args.mode=='full',profiled=profiled,source_revision=TOOL.BASELINE if name=='baseline' else args.revision,
             states_before=before,states_after=after,spool_filesystem_stat=filesystem,jfr=jfr_evidence,
             client_exit=measured_status,reconciliation_exit=reconciliation_status,
+            warmup=dict(warmup_drain,client_exit=warmup_status,attempted=len(warmup_rows),
+                http_202=TOOL.value(warmup_summary,'http_202'),dropped=TOOL.value(warmup_summary,'dropped_iterations')),
             protocol_sha256=digest(ROOT/'tools/slo/workload.js'),profiles_sha256=digest(ROOT/'tools/slo/profiles.json'))
         (artifact/'config.json').write_text(json.dumps(config,indent=2)+'\n')
         (artifact/'report.json').write_text(json.dumps(result,indent=2,sort_keys=True)+'\n')
@@ -238,6 +258,7 @@ def main():
     (artifact/'environment.json').write_text(json.dumps(metadata,indent=2,sort_keys=True)+'\n')
     phases=['baseline','tuned','tuned-profiled'] if args.profile in ('reference','scale') else ['tuned-profiled']
     if args.repeat%2==0:phases.reverse()
+    if args.mode=='pilot':phases=['tuned','tuned-profiled','baseline']
     results=[]
     with tempfile.TemporaryDirectory(prefix='telemetry-slo-') as temporary:
         private=Path(temporary);env_file=private/'env'
