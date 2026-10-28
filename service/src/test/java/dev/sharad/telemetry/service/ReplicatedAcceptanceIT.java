@@ -61,15 +61,26 @@ class ReplicatedAcceptanceIT {
         assertReplicatedPolicy(admin);
         startCollector(infrastructure);
         var accepted = new HashSet<UUID>();
-        for (int index = 0; index < 2; index++) {
+        var burst = new java.util.ArrayList<UUID>();
+        var replies =
+            new java.util.ArrayList<java.util.concurrent.CompletableFuture<HttpResponse<String>>>();
+        for (int index = 0; index < 8; index++) {
           var id = UUID.randomUUID();
-          var response = post(id);
+          burst.add(id);
+          replies.add(http.sendAsync(request(id), HttpResponse.BodyHandlers.ofString()));
+        }
+        for (int index = 0; index < burst.size(); index++) {
+          var response = replies.get(index).get(20, TimeUnit.SECONDS);
           assertEquals(202, response.statusCode(), response.body());
           assertTrue(
               response.body().contains("\"stream\":\"telemetry.events.v1\""), response.body());
-          accepted.add(id);
-          assertEquals(202, post(id).statusCode());
+          assertTrue(response.body().contains(burst.get(index).toString()), response.body());
+          accepted.add(burst.get(index));
         }
+        replies.clear();
+        for (var id : burst)
+          replies.add(http.sendAsync(request(id), HttpResponse.BodyHandlers.ofString()));
+        for (var reply : replies) assertEquals(202, reply.get(20, TimeUnit.SECONDS).statusCode());
         // No worker has run: the database cannot mask a lost collector-only record.
         killCollector();
         removeVolume(directory.resolve("wal"));

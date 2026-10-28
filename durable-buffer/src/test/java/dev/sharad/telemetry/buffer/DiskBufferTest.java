@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -229,6 +230,120 @@ class DiskBufferTest {
       buffer.acknowledge(first.sequence());
       assertEquals(second.sequence(), buffer.peek().orElseThrow().sequence());
       assertEquals(1, buffer.snapshot().records());
+    }
+  }
+
+  @Test
+  void boundsBatchReadsWithoutSkippingTheHead() throws Exception {
+    try (var buffer = new DiskBuffer(directory, limits)) {
+      var first = buffer.append("a:one", bytes("one"), Map.of());
+      var second = buffer.append("a:two", bytes("two"), Map.of());
+      buffer.append("a:three", bytes("three"), Map.of());
+      assertEquals(
+          List.of(first.sequence(), second.sequence()),
+          buffer.peekBatch(2, 4096).stream().map(DiskBuffer.Entry::sequence).toList());
+      long headBytes = Files.size(directory.resolve(String.format("%020d.evt", first.sequence())));
+      assertEquals(1, buffer.peekBatch(10, headBytes).size());
+      assertEquals(first.sequence(), buffer.peekBatch(10, 1).getFirst().sequence());
+      assertThrows(IllegalArgumentException.class, () -> buffer.peekBatch(257, 4096));
+      assertThrows(IllegalArgumentException.class, () -> buffer.peekBatch(1, 0));
+    }
+  }
+
+  @Test
+  void checkpointsOnlyACompletePrefixAndRecoversItsRemainder() throws Exception {
+    try (var buffer = new DiskBuffer(directory, limits)) {
+      for (int id = 0; id < 3; id++) buffer.append("a:" + id, bytes("data"), Map.of());
+      assertThrows(IllegalArgumentException.class, () -> buffer.acknowledgeBatch(List.of(1L, 3L)));
+      assertThrows(IllegalArgumentException.class, () -> buffer.acknowledgeBatch(List.of(1L, 1L)));
+      assertThrows(IllegalArgumentException.class, () -> buffer.acknowledgeBatch(List.of(2L, 1L)));
+      assertEquals(0, buffer.snapshot().deliveredSequence());
+      buffer.acknowledgeBatch(List.of(1L, 2L));
+      assertEquals(2, buffer.snapshot().deliveredSequence());
+      assertEquals(3, buffer.peek().orElseThrow().sequence());
+    }
+    try (var recovered = new DiskBuffer(directory, limits)) {
+      assertEquals(1, recovered.snapshot().records());
+      recovered.acknowledgeBatch(List.of(1L, 2L));
+      assertEquals(3, recovered.peek().orElseThrow().sequence());
+      recovered.acknowledge(3);
+      assertTrue(recovered.peek().isEmpty());
+    }
+  }
+
+  @Test
+  void failedBatchCheckpointRetainsEveryRecord() throws Exception {
+    try (var buffer = new DiskBuffer(directory, limits)) {
+      for (int id = 0; id < 3; id++) buffer.append("a:" + id, bytes("data"), Map.of());
+      Files.createDirectory(directory.resolve("checkpoint"));
+      assertThrows(java.io.IOException.class, () -> buffer.acknowledgeBatch(List.of(1L, 2L, 3L)));
+      assertEquals(0, buffer.snapshot().deliveredSequence());
+      assertEquals(3, buffer.snapshot().records());
+      Files.delete(directory.resolve("checkpoint"));
+      buffer.acknowledgeBatch(List.of(1L, 2L, 3L));
+      assertEquals(0, buffer.snapshot().records());
+    }
+  }
+
+  @Test
+  void retriesBatchReclamationAfterItsDurableCheckpoint() throws Exception {
+    try (var buffer = new DiskBuffer(directory, limits)) {
+      for (int id = 0; id < 3; id++) buffer.append("a:" + id, bytes("data"), Map.of());
+      Path record = directory.resolve("00000000000000000001.evt");
+      Path saved = directory.resolveSibling(directory.getFileName() + "-saved.evt");
+      Files.move(record, saved);
+      try {
+        Files.createDirectory(record);
+        Files.writeString(record.resolve("fault"), "unlink failure");
+        assertThrows(
+            java.nio.file.DirectoryNotEmptyException.class,
+            () -> buffer.acknowledgeBatch(List.of(1L, 2L)));
+        assertEquals(2, buffer.snapshot().deliveredSequence());
+        assertEquals(3, buffer.snapshot().records());
+        Files.delete(record.resolve("fault"));
+        Files.delete(record);
+        Files.move(saved, record);
+        buffer.acknowledgeBatch(List.of(1L, 2L));
+        assertEquals(3, buffer.peek().orElseThrow().sequence());
+        assertEquals(1, buffer.snapshot().records());
+      } finally {
+        Files.deleteIfExists(saved);
+      }
+    }
+  }
+
+  @Test
+  void dataNotificationAndCloseCannotStrandAWaiter() throws Exception {
+    var buffer = new DiskBuffer(directory, limits);
+    try (var pool = Executors.newSingleThreadExecutor()) {
+      assertFalse(buffer.awaitRecords(Duration.ZERO));
+      var ready = new java.util.concurrent.CountDownLatch(1);
+      var waiting =
+          pool.submit(
+              () -> {
+                ready.countDown();
+                while (!buffer.awaitRecords(Duration.ofSeconds(1))) {}
+                return true;
+              });
+      assertTrue(ready.await(5, TimeUnit.SECONDS));
+      buffer.append("a:notify", bytes("data"), Map.of());
+      assertTrue(waiting.get(5, TimeUnit.SECONDS));
+      buffer.acknowledge(1);
+      var closed =
+          pool.submit(
+              () -> {
+                while (!buffer.awaitRecords(Duration.ofSeconds(1))) {}
+                return true;
+              });
+      buffer.close();
+      assertInstanceOf(
+          java.io.IOException.class,
+          assertThrows(
+                  java.util.concurrent.ExecutionException.class,
+                  () -> closed.get(5, TimeUnit.SECONDS))
+              .getCause());
+    } finally {
+      buffer.close();
     }
   }
 

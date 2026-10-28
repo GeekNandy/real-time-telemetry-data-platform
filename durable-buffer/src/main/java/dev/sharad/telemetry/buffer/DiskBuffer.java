@@ -16,8 +16,11 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
@@ -30,6 +33,8 @@ import java.util.zip.CRC32C;
  * loss.
  */
 public final class DiskBuffer implements AutoCloseable {
+  public static final int MAX_BATCH_RECORDS = 256;
+  public static final long MAX_BATCH_BYTES = 4L * 1024 * 1024;
   private static final int MAGIC = 0x52545450;
   private static final int HEADER_BYTES =
       Integer.BYTES + Short.BYTES + Long.BYTES * 2 + Integer.BYTES * 2;
@@ -127,6 +132,7 @@ public final class DiskBuffer implements AutoCloseable {
       usedBytes += frame.length;
       nextSequence++;
       forceDirectory();
+      notifyAll();
       return new Entry(sequence, created, key, payload, traceHeaders);
     } finally {
       Files.deleteIfExists(temporary);
@@ -140,15 +146,65 @@ public final class DiskBuffer implements AutoCloseable {
         : Optional.of(read(pending.firstEntry().getValue().path()));
   }
 
+  /** Read a bounded prefix. A large head is returned alone so a valid record cannot be stranded. */
+  public synchronized List<Entry> peekBatch(int maxRecords, long maxBytes) throws IOException {
+    requireOpen();
+    if (maxRecords < 1
+        || maxRecords > MAX_BATCH_RECORDS
+        || maxBytes < 1
+        || maxBytes > MAX_BATCH_BYTES)
+      throw new IllegalArgumentException("Invalid spool batch limits");
+    var result = new ArrayList<Entry>();
+    long bytes = 0;
+    for (var record : pending.values()) {
+      if (result.size() == maxRecords || (!result.isEmpty() && record.bytes() > maxBytes - bytes))
+        break;
+      result.add(read(record.path()));
+      bytes += record.bytes();
+    }
+    return List.copyOf(result);
+  }
+
+  /** Wait without polling or holding the spool monitor across a sleep. */
+  public synchronized boolean awaitRecords(Duration deadline)
+      throws IOException, InterruptedException {
+    if (deadline == null || deadline.isNegative() || deadline.compareTo(Duration.ofSeconds(1)) > 0)
+      throw new IllegalArgumentException("Invalid spool wait deadline");
+    long remaining = deadline.toNanos();
+    long started = System.nanoTime();
+    while (pending.isEmpty() && !closed && remaining > 0) {
+      java.util.concurrent.TimeUnit.NANOSECONDS.timedWait(this, remaining);
+      remaining = deadline.toNanos() - (System.nanoTime() - started);
+    }
+    requireOpen();
+    return !pending.isEmpty();
+  }
+
   /** Only the head can advance. Persist the delivered checkpoint before reclaiming its file. */
   public synchronized void acknowledge(long sequence) throws IOException {
+    acknowledgeBatch(List.of(sequence));
+  }
+
+  /** Checkpoint only a fully confirmed prefix; one durable checkpoint covers the complete batch. */
+  public synchronized void acknowledgeBatch(List<Long> sequences) throws IOException {
     requireOpen();
+    if (sequences == null || sequences.isEmpty() || sequences.size() > MAX_BATCH_RECORDS)
+      throw new IllegalArgumentException("Invalid checkpoint batch");
+    long previous = 0;
+    var unconfirmed = pending.tailMap(deliveredSequence, false).keySet().iterator();
+    for (Long candidate : sequences) {
+      if (candidate == null || candidate <= previous)
+        throw new IllegalArgumentException("Checkpoint sequences must increase");
+      previous = candidate;
+      if (candidate > deliveredSequence
+          && (!unconfirmed.hasNext() || unconfirmed.next().longValue() != candidate))
+        throw new IllegalArgumentException("Out-of-order acknowledgement prefix");
+    }
+    long sequence = previous;
     if (sequence <= deliveredSequence) {
       reclaimDelivered();
       return;
     }
-    if (pending.isEmpty() || pending.firstKey() != sequence)
-      throw new IllegalArgumentException("Out-of-order acknowledgement");
     Path checkpointTemporary = directory.resolve("checkpoint.tmp");
     byte[] sequenceBytes = ByteBuffer.allocate(Long.BYTES).putLong(sequence).array();
     var crc = new CRC32C();
@@ -357,6 +413,7 @@ public final class DiskBuffer implements AutoCloseable {
   public synchronized void close() throws IOException {
     if (closed) return;
     closed = true;
+    notifyAll();
     processLock.release();
     lockChannel.close();
   }

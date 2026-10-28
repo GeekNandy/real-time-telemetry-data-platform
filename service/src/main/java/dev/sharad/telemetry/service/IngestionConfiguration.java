@@ -7,6 +7,7 @@ import dev.sharad.telemetry.observability.PlatformTelemetry;
 import dev.sharad.telemetry.schema.AvroEventCodec;
 import io.micrometer.core.instrument.FunctionCounter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -68,12 +69,35 @@ public class IngestionConfiguration {
       AvroEventCodec codec,
       PlatformSettings settings,
       MeterRegistry metrics) {
+    var encoding =
+        Timer.builder("telemetry.append.phase.duration")
+            .tag("phase", "encode")
+            .publishPercentileHistogram()
+            .register(metrics);
+    var spooling =
+        Timer.builder("telemetry.append.phase.duration")
+            .tag("phase", "spool_registration")
+            .publishPercentileHistogram()
+            .register(metrics);
     var engine =
         new IngestionEngine(
             submission -> {
               var event = submission.event();
-              return acceptance.append(
-                  event.partitionKey(), codec.encode(event), submission.traceHeaders());
+              byte[] encoded;
+              long encodeStarted = System.nanoTime();
+              try {
+                encoded = codec.encode(event);
+              } finally {
+                encoding.record(
+                    System.nanoTime() - encodeStarted, java.util.concurrent.TimeUnit.NANOSECONDS);
+              }
+              long appendStarted = System.nanoTime();
+              try {
+                return acceptance.append(event.partitionKey(), encoded, submission.traceHeaders());
+              } finally {
+                spooling.record(
+                    System.nanoTime() - appendStarted, java.util.concurrent.TimeUnit.NANOSECONDS);
+              }
             },
             settings.globalCapacity(),
             settings.tenantCapacity(),
@@ -120,8 +144,20 @@ public class IngestionConfiguration {
       KafkaTemplate<String, byte[]> kafka,
       PlatformTelemetry telemetry,
       @Value("${telemetry.topic}") String topic,
+      @Value("${telemetry.dispatch.batch-records:64}") int batchRecords,
+      @Value("${telemetry.dispatch.batch-bytes:1048576}") long batchBytes,
+      @Value("${telemetry.dispatch.publication-deadline-ms:10000}") long publicationDeadline,
       MeterRegistry meters) {
-    return new BufferDispatcher(buffer, acceptance, kafka, telemetry, topic, meters);
+    return new BufferDispatcher(
+        buffer,
+        acceptance,
+        kafka,
+        telemetry,
+        topic,
+        meters,
+        batchRecords,
+        batchBytes,
+        Duration.ofMillis(publicationDeadline));
   }
 
   @Bean

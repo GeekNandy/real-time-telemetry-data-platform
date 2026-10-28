@@ -4,7 +4,9 @@ import dev.sharad.telemetry.buffer.DiskBuffer;
 import dev.sharad.telemetry.core.DurableLog;
 import java.io.IOException;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -16,6 +18,13 @@ import java.util.concurrent.TimeoutException;
 
 /** Bounded HTTP waiters; a timeout never removes durable work from the spool. */
 final class KafkaAcceptance implements AutoCloseable {
+  record Confirmed(long sequence, DurableLog.Position position) {
+    Confirmed {
+      if (sequence < 1) throw new IllegalArgumentException("Invalid confirmed sequence");
+      java.util.Objects.requireNonNull(position);
+    }
+  }
+
   private static final class Waiter {
     final CompletableFuture<DurableLog.Position> result = new CompletableFuture<>();
     ScheduledFuture<?> timeout;
@@ -74,15 +83,27 @@ final class KafkaAcceptance implements AutoCloseable {
 
   /** Call only after producer acknowledgement; checkpoint before allowing an HTTP 202. */
   void confirm(long sequence, DurableLog.Position position) throws IOException {
-    java.util.Objects.requireNonNull(position);
-    Waiter waiter;
+    confirmBatch(List.of(new Confirmed(sequence, position)));
+  }
+
+  /** All positions must be producer-confirmed before checkpointing any entry in this prefix. */
+  void confirmBatch(List<Confirmed> confirmed) throws IOException {
+    if (confirmed == null || confirmed.isEmpty() || confirmed.size() > DiskBuffer.MAX_BATCH_RECORDS)
+      throw new IllegalArgumentException("Invalid confirmation batch");
+    confirmed = List.copyOf(confirmed);
+    var settled = new ArrayList<Map.Entry<Waiter, DurableLog.Position>>();
     synchronized (this) {
-      buffer.acknowledge(sequence);
-      waiter = waiting.remove(sequence);
-      if (waiter != null) waiter.timeout.cancel(false);
+      buffer.acknowledgeBatch(confirmed.stream().map(Confirmed::sequence).toList());
+      for (var item : confirmed) {
+        Waiter waiter = waiting.remove(item.sequence());
+        if (waiter != null) {
+          waiter.timeout.cancel(false);
+          settled.add(Map.entry(waiter, item.position()));
+        }
+      }
     }
     // Completing outside the monitor keeps subscriber callbacks out of the filesystem protocol.
-    if (waiter != null) waiter.result.complete(position);
+    for (var item : settled) item.getKey().result.complete(item.getValue());
   }
 
   private void expire(long sequence, Waiter expected) {
