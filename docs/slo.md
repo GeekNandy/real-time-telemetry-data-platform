@@ -33,6 +33,8 @@ p99 must be <=25 ms. Source lag must stay within two seconds of offered traffic;
 application memory must stay below 80% of quota and CPU p95 below 90% of its quota.
 Observers must cover at least 90% of the measured window. The arrival timer may include or exclude one terminal boundary iteration; report the nominal and observed offered counts and require their difference to be at most one. The success denominator includes observed starts plus drops, while raw records must exactly match started/completed audit counters. Larger cardinality differences invalidate the experiment.
 
+Warmup is reported separately from the measured SLO window. Cold-start drops and retryable outcomes remain in its raw audit; protocol violations or lost 202 identities stop the run. Its durable backlog must drain before measurement. Every measured steady-state window still requires zero generator drops and all fixed release gates.
+
 Each accepted request is queried during load. Its visibility observation includes
 polling and network time and is an upper bound, not a database commit timestamp.
 Polling backs off from 20 ms to a 200 ms cap within the same absolute deadline, bounding query amplification during lag. A separate post-load reconciliation verifies every observed 202 and reports

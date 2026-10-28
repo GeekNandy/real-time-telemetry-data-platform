@@ -169,8 +169,6 @@ def phase(args,name,env_file,private):
         if warm_reconciliation:raise RuntimeError('Warmup accepted-ID reconciliation failed')
         if TOOL.value(warmup_summary,'contract_failures') or any(r['http_status']==202 and not r['receipt_valid'] for r in warmup_rows):
             raise RuntimeError('Warmup violated identity/content contracts')
-        if name!='baseline' and (warmup_status or any(not r['receipt_valid'] for r in warmup_rows)):
-            raise RuntimeError('Tuned warmup must produce valid receipts without client drops')
         for role,url in [('collector',config['collector_url']),('worker',config['worker_url'])]:
             metrics(credentials[0]['token'],url,artifact/(role+'-histograms-before.prom'))
         measured_status=client(config,private,directory/'load.log',args)
