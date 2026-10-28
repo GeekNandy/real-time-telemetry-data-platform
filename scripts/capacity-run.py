@@ -97,7 +97,7 @@ def load(token_file, output, rate, duration):
     return summary
 
 
-def start_probe(compose, directory):
+def start_probe(compose, directory, seconds=1800):
     jar_path = run(compose + ["exec", "-T", "collector", "sh", "-c", "ls /app/lib/kafka-clients-*.jar"], timeout=15).stdout.strip()
     if not jar_path.startswith("/app/lib/kafka-clients-") or "\n" in jar_path or not jar_path.endswith(".jar"):
         raise RuntimeError("Cannot identify the packaged Kafka client")
@@ -108,7 +108,7 @@ def start_probe(compose, directory):
     log = (directory / "source-lag.raw.log").open("w")
     process = subprocess.Popen(compose + ["exec", "-T", "-e", "JAVA_TOOL_OPTIONS=", "kafka", "java", "-Xms16m", "-Xmx96m",
         "-cp", "/opt/kafka/libs/*:/tmp", "CapacityProbe", "kafka:9092,kafka2:9092,kafka3:9092",
-        "telemetry.events.v1", "telemetry-persistence-v1", "1800"], cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
+        "telemetry.events.v1", "telemetry-persistence-v1", str(seconds)], cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
     deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
         if process.poll() is not None:

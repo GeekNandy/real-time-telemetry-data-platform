@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration version="2.0" label="Telemetry retained heap" description="Only GC heap and pauses; no environment, command lines or payloads" provider="Telemetry">
+  <event name="jdk.GCHeapSummary"><setting name="enabled">true</setting></event>
+  <event name="jdk.GarbageCollection"><setting name="enabled">true</setting><setting name="threshold">0 ms</setting></event>
+  <event name="jdk.InitialEnvironmentVariable"><setting name="enabled">false</setting></event>
+  <event name="jdk.InitialSystemProperty"><setting name="enabled">false</setting></event>
+  <event name="jdk.SystemProcess"><setting name="enabled">false</setting></event>
+</configuration>
