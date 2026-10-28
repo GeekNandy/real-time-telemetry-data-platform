@@ -214,6 +214,18 @@ def phase(args,name,env_file,private):
         stopped.set()
         if monitor:monitor.join(timeout=30)
         stop_probe(probe,probe_log)
+        if profiled and not (artifact/'report.json').exists() and (directory/'warmup.log').is_file():
+            try:
+                for role,url in [('collector',config['collector_url']),('worker',config['worker_url'])]:
+                    metrics(credentials[0]['token'],url,artifact/(role+'-diagnostic-histograms.prom'))
+                run(compose+['stop','-t','30','collector','worker'],output=directory/'diagnostic-stop.log',timeout=90)
+                diagnostic_summary,diagnostic_rows=TOOL.audit(directory/'warmup.log',warmup)
+                diagnostic_start=diagnostic_rows[0]['scenario_start_ms']
+                diagnostic_jfr,profiles=jfr(compose,directory,artifact,warmup,diagnostic_start,diagnostic_start+warmup['duration_seconds']*1000)
+                for role in ('collector','worker'):CAPACITY.compress(profiles/(role+'.jfr'),artifact/(role+'-diagnostic.jfr.gz'))
+                (artifact/'diagnostic.json').write_text(json.dumps(dict(kind='warmup',capacity_eligible=False,jfr=diagnostic_jfr),indent=2)+'\n')
+            except Exception as diagnostic_error:
+                (artifact/'diagnostic-error.json').write_text(json.dumps({'error_type':type(diagnostic_error).__name__})+'\n')
         run(compose+['logs','--no-color','--tail','60'],output=artifact/'application-tail.log',timeout=30,check=False)
         # On harness errors, preserve only audit/observation logs; never archive private token/env files.
         for name_ in ('warmup.log','warmup-reconcile.log','load.log','reconcile.log','resources.jsonl','source-lag.raw.log'):
@@ -258,7 +270,7 @@ def main():
     (artifact/'environment.json').write_text(json.dumps(metadata,indent=2,sort_keys=True)+'\n')
     phases=['baseline','tuned','tuned-profiled'] if args.profile in ('reference','scale') else ['tuned-profiled']
     if args.repeat%2==0:phases.reverse()
-    if args.mode=='pilot':phases=['tuned','tuned-profiled','baseline']
+    if args.mode=='pilot':phases=['tuned-profiled','tuned','baseline']
     results=[]
     with tempfile.TemporaryDirectory(prefix='telemetry-slo-') as temporary:
         private=Path(temporary);env_file=private/'env'
