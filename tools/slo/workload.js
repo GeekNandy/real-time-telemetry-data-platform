@@ -123,7 +123,7 @@ function matches(response, id, slot) {
     Object.keys(expected.attributes).every(k => value.attributes[k] === expected.attributes[k]);
 }
 function lookup(id, slot, deadline, retry = true) {
-  let observed = false, mismatch = false;
+  let observed = false, mismatch = false, pause = 0.02;
   do {
     const remaining = deadline - Date.now();
     if (remaining <= 0) break;
@@ -136,7 +136,8 @@ function lookup(id, slot, deadline, retry = true) {
       break;
     }
     if (!retry || Date.now() >= deadline) break;
-    sleep(Math.min(0.02, Math.max(0, (deadline - Date.now()) / 1000)));
+    sleep(Math.min(pause, Math.max(0, (deadline - Date.now()) / 1000)));
+    pause = Math.min(0.2, pause * 2);
   } while (true);
   return {observed, mismatch};
 }

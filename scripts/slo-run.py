@@ -102,7 +102,7 @@ def phase(args,name,env_file,private):
     artifact=args.output/'artifact'/name;artifact.mkdir(parents=True)
     config=TOOL.profile(args.profile)
     if args.mode=='pilot':
-        config.update(rate_per_second=10,duration_seconds=15,virtual_users=32)
+        config.update(rate_per_second=100,duration_seconds=30,virtual_users=256)
         config.pop('stages',None)
     config.update(mode='measure',kind='measure',collector_url='http://127.0.0.1:8080',
         worker_url='http://127.0.0.1:8082',request_timeout_ms=5000,settle_seconds=900,
@@ -142,11 +142,16 @@ def phase(args,name,env_file,private):
         probe,probe_log=CAPACITY.start_probe(compose,directory,seconds=3600)
         monitor=threading.Thread(target=CAPACITY.sample,args=(compose,credentials[0]['token'],directory/'resources.jsonl',stopped),daemon=True)
         monitor.start()
-        warmup=dict(config,kind='warmup',duration_seconds=10 if args.mode=='pilot' else 60,
+        warmup=dict(config,kind='warmup',duration_seconds=60,
             rate_per_second=min(config['rate_per_second'],100),run_prefix=str(uuid.uuid4())[:24])
         warmup.pop('stages',None)
         warmup_status=client(warmup,private,directory/'warmup.log',args)
         warmup_summary,warmup_rows=TOOL.audit(directory/'warmup.log',warmup)
+        warm_manifest=[{key:r[key] for key in ('id','tenant_slot','http_status')} for r in warmup_rows]
+        warm_manifest.sort(key=lambda r:r['http_status']!=202)
+        warm_reconciliation=client(dict(warmup,mode='reconcile'),private,directory/'warmup-reconcile.log',args,warm_manifest)
+        TOOL.reconcile_audit(directory/'warmup-reconcile.log',warm_manifest)
+        if warm_reconciliation:raise RuntimeError('Warmup accepted-ID reconciliation failed')
         if warmup_status or any(not r['receipt_valid'] for r in warmup_rows):raise RuntimeError('Warmup must produce valid receipts without client drops')
         for role,url in [('collector',config['collector_url']),('worker',config['worker_url'])]:
             metrics(credentials[0]['token'],url,artifact/(role+'-histograms-before.prom'))
@@ -181,7 +186,7 @@ def phase(args,name,env_file,private):
             protocol_sha256=digest(ROOT/'tools/slo/workload.js'),profiles_sha256=digest(ROOT/'tools/slo/profiles.json'))
         (artifact/'config.json').write_text(json.dumps(config,indent=2)+'\n')
         (artifact/'report.json').write_text(json.dumps(result,indent=2,sort_keys=True)+'\n')
-        for name_ in ('warmup.log','load.log','reconcile.log','resources.jsonl','source-lag.raw.log'):
+        for name_ in ('warmup.log','warmup-reconcile.log','load.log','reconcile.log','resources.jsonl','source-lag.raw.log'):
             CAPACITY.compress(directory/name_,artifact/(name_+'.gz'))
         print(f'Measured gates: {result["passed"]}; failed: {[k for k,v in result["gates"].items() if not v]}',flush=True)
         return result
@@ -191,7 +196,7 @@ def phase(args,name,env_file,private):
         stop_probe(probe,probe_log)
         run(compose+['logs','--no-color','--tail','60'],output=artifact/'application-tail.log',timeout=30,check=False)
         # On harness errors, preserve only audit/observation logs; never archive private token/env files.
-        for name_ in ('warmup.log','load.log','reconcile.log','resources.jsonl','source-lag.raw.log'):
+        for name_ in ('warmup.log','warmup-reconcile.log','load.log','reconcile.log','resources.jsonl','source-lag.raw.log'):
             source=directory/name_
             if source.is_file() and not (artifact/(name_+'.gz')).exists():CAPACITY.compress(source,artifact/(name_+'.gz'))
         run(compose+['down','--volumes','--remove-orphans'],output=directory/'cleanup.log',timeout=120,check=False)

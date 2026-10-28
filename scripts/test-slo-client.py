@@ -51,6 +51,7 @@ class Handler(BaseHTTPRequestHandler):
         event_id = self.path.rsplit('/', 1)[-1]
         with self.server.lock:
             self.server.ports.add(self.client_address[1]); stored = self.server.rows.get(event_id)
+            self.server.gets[event_id] = self.server.gets.get(event_id, 0) + 1
         if self.server.mode == 'missing' or not stored: return self.reply(404, {})
         slot, event = stored
         if slot != self.slot() and self.server.mode != 'leak': return self.reply(404, {})
@@ -68,7 +69,7 @@ class ClientContracts(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='slo-client-test-') as temporary:
             folder = Path(temporary)
             peer = Peer(('127.0.0.1', 0), Handler); peer.mode = mode; peer.rows = {}
-            peer.ports = set(); peer.lengths = []; peer.lock = threading.Lock()
+            peer.ports = set(); peer.lengths = []; peer.gets = {}; peer.lock = threading.Lock()
             thread = threading.Thread(target=peer.serve_forever, daemon=True); thread.start()
             try:
                 config = TOOL.profile('reference'); config.update(mode='measure', kind='fixture',
@@ -99,6 +100,9 @@ class ClientContracts(unittest.TestCase):
                 self.assertEqual(len(records), len({r['id'] for r in records}))
                 self.assertTrue(all(n==512 for n in peer.lengths))
                 self.assertNotIn('fixture-token-', log.read_text())
+                if mode == 'missing':
+                    self.assertLessEqual(max(peer.gets.values()), 6,
+                        'Missing visibility must use bounded exponential polling')
                 first = process.returncode, summary, records, len(peer.ports)
                 if not reconcile: return first
                 manifest = [{key:r[key] for key in ('id','tenant_slot','http_status')} for r in records]

@@ -33,7 +33,7 @@ Observers must cover at least 90% of the measured window. The arrival timer may 
 
 Each accepted request is queried during load. Its visibility observation includes
 polling and network time and is an upper bound, not a database commit timestamp.
-A separate post-load reconciliation verifies every observed 202 and reports
+Polling backs off from 20 ms to a 200 ms cap within the same absolute deadline, bounding query amplification during lag. A separate post-load reconciliation verifies every observed 202 and reports
 non-202/transport outcomes that become visible later. Timeouts and 503 outcomes
 remain ambiguous; they are not silently counted as lost accepted data.
 
