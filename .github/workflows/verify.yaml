@@ -82,6 +82,10 @@ jobs:
         run: |
           python3 scripts/install-tools.py --directory "$RUNNER_TEMP/telemetry-tools" helm kubeconform terraform
           echo "$RUNNER_TEMP/telemetry-tools" >> "$GITHUB_PATH"
+      - name: Verify bounded SLO profiles and raw audit accounting
+        run: python3 scripts/test-slo-profiles.py
+      - name: Exercise the pinned load client against real HTTP peers
+        run: python3 scripts/test-slo-client.py
       - name: Validate Helm and Kubernetes API contracts
         run: |
           helm lint deploy/helm/telemetry -f deploy/helm/telemetry/values-ci.yaml

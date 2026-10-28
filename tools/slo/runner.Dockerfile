@@ -1,0 +1,4 @@
+FROM scratch
+COPY k6 /k6
+USER 10001:10001
+ENTRYPOINT ["/k6"]
