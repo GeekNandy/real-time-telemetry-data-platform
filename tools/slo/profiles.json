@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "reference": {
+    "rate_per_second": 100,
+    "duration_seconds": 600,
+    "tenants": 8,
+    "payload_bytes": 512,
+    "virtual_users": 256,
+    "role_cpus": 1,
+    "role_memory_mib": 768,
+    "acceptance_fraction": 0.999,
+    "acceptance_p99_ms": 250,
+    "acceptance_p999_ms": 750,
+    "visibility_p99_ms": 2000,
+    "visibility_fraction": 0.99,
+    "generator_delay_p99_ms": 25,
+    "memory_fraction": 0.8,
+    "cpu_p95_fraction": 0.9,
+    "lag_seconds": 2
+  },
+  "scale": {
+    "rate_per_second": 500,
+    "duration_seconds": 600,
+    "tenants": 8,
+    "payload_bytes": 512,
+    "virtual_users": 256,
+    "role_cpus": 2,
+    "role_memory_mib": 1536,
+    "acceptance_fraction": 0.999,
+    "acceptance_p99_ms": 250,
+    "acceptance_p999_ms": 750,
+    "visibility_p99_ms": 2000,
+    "visibility_fraction": 0.99,
+    "generator_delay_p99_ms": 25,
+    "memory_fraction": 0.8,
+    "cpu_p95_fraction": 0.9,
+    "lag_seconds": 2
+  },
+  "soak": {
+    "extends": "scale",
+    "duration_seconds": 1800,
+    "retained_heap_growth_mib_per_minute": 1,
+    "retained_heap_growth_window_seconds": 600
+  },
+  "burst": {
+    "extends": "scale",
+    "stages": [
+      {"duration_seconds": 30, "target": 500},
+      {"duration_seconds": 2, "target": 1000},
+      {"duration_seconds": 30, "target": 1000},
+      {"duration_seconds": 2, "target": 500},
+      {"duration_seconds": 30, "target": 500}
+    ],
+    "response_p99_ms": 8000,
+    "recovery_seconds": 30,
+    "allowed_http_statuses": [202, 429, 503],
+    "memory_fraction": 0.9
+  }
+}
