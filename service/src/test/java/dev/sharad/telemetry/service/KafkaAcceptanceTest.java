@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
@@ -140,6 +141,46 @@ class KafkaAcceptanceTest {
       assertEquals(0, acceptance.scheduledWaiters());
       assertThrows(
           IOException.class, () -> acceptance.append("tenant:closed", new byte[] {2}, Map.of()));
+    }
+  }
+
+  @Test
+  void batchCompletionIsAllOrNothingUntilThePrefixCheckpoint() throws Exception {
+    try (var buffer = buffer();
+        var acceptance = new KafkaAcceptance(buffer, 4, Duration.ofSeconds(30))) {
+      var first = acceptance.append("tenant:one", new byte[] {1}, Map.of()).toCompletableFuture();
+      var second = acceptance.append("tenant:two", new byte[] {2}, Map.of()).toCompletableFuture();
+      var confirmations =
+          List.of(
+              new KafkaAcceptance.Confirmed(1, POSITION),
+              new KafkaAcceptance.Confirmed(2, new DurableLog.Position("events", 1, 43)));
+      Files.createDirectory(directory.resolve("checkpoint"));
+      assertThrows(IOException.class, () -> acceptance.confirmBatch(confirmations));
+      assertFalse(first.isDone());
+      assertFalse(second.isDone());
+      assertEquals(2, acceptance.pendingWaiters());
+      Files.delete(directory.resolve("checkpoint"));
+      acceptance.confirmBatch(confirmations);
+      assertEquals(42, first.get(5, TimeUnit.SECONDS).offset());
+      assertEquals(43, second.get(5, TimeUnit.SECONDS).offset());
+      assertEquals(0, acceptance.scheduledWaiters());
+      assertEquals(0, buffer.snapshot().records());
+    }
+  }
+
+  @Test
+  void rejectedBatchPrefixCannotCompleteAnyWaiter() throws Exception {
+    try (var buffer = buffer();
+        var acceptance = new KafkaAcceptance(buffer, 4, Duration.ofSeconds(30))) {
+      var first = acceptance.append("tenant:one", new byte[] {1}, Map.of()).toCompletableFuture();
+      var second = acceptance.append("tenant:two", new byte[] {2}, Map.of()).toCompletableFuture();
+      assertThrows(
+          IllegalArgumentException.class,
+          () -> acceptance.confirmBatch(List.of(new KafkaAcceptance.Confirmed(2, POSITION))));
+      assertFalse(first.isDone());
+      assertFalse(second.isDone());
+      assertEquals(0, buffer.snapshot().deliveredSequence());
+      assertEquals(2, acceptance.pendingWaiters());
     }
   }
 

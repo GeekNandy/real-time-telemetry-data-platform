@@ -38,6 +38,36 @@ are bounded. File metadata is cached so readiness and metric reads perform no
 disk I/O. The byte budget counts encoded records, not filesystem blocks;
 provision volume headroom for metadata, temporary files and filesystem reserves.
 
+## Bounded publication and checkpoint batching
+
+The dispatcher reads a prefix bounded by both record count and encoded bytes
+(default 64 records and 1 MiB; hard limits 256 and 4 MiB). A head larger than the
+requested byte target is processed alone within the configured per-record limit.
+It sends that complete window in volume order before waiting for producer
+acknowledgements. Kafka idempotence and at most five in-flight requests preserve
+per-partition producer order; downstream identity/fingerprint checks handle replay.
+A two-millisecond coalescing interval bounds assembly delay. A notified dispatcher
+replaces the former periodic empty-queue poll.
+
+Only after **every** record in the prefix has a successful producer receipt does
+one synchronized delivered checkpoint advance through that prefix. Every waiting
+HTTP request keeps its own actual topic/partition/offset. If a send, acknowledgement
+or checkpoint fails, no waiter in the unconfirmed batch succeeds; the prefix can
+be republished and deduplicated. A durable checkpoint and reclamation remain
+separate recoverable states. The on-disk frame/checkpoint format is unchanged.
+
+`telemetry.dispatch.batch-records`, `telemetry.dispatch.batch-bytes` and
+`telemetry.dispatch.publication-deadline-ms` configure the bounded window and its
+shared publication deadline (default ten seconds). This deadline includes sends
+and waits; Kafka's own bounded metadata/buffer allocation and filesystem calls can
+overrun it. It does not extend the separate HTTP acknowledgement deadline.
+
+Bounded-label histograms distinguish append encoding, spool/registration wait,
+spool batch reads, batch publication and batch checkpoint time. These are operation
+measurements; overlapping batch and per-request intervals are not additive stage
+latencies. Batch-size observations and source/load identities accompany workload
+experiments. No throughput improvement is inferred merely from the implementation.
+
 ## Explicit failure assumptions
 
 | Failure | Intended behavior |
@@ -88,7 +118,7 @@ Waiter registration and checkpoint confirmation share a monitor so fast publicat
 cannot overtake registration. One removable timer per waiter is bounded by global
 admission capacity. Subscriber callbacks run outside that monitor. Recovery needs
 no HTTP waiter; the spool is independently bounded by its encoded byte and record
-budgets, and one ordered dispatcher retries its head with capped backoff.
+budgets, and one ordered dispatcher retries its unconfirmed prefix with capped backoff.
 
 Immutable records and copied maps cross the executor boundary. Monitor release/
 acquisition, executor queue publication, atomic settlement and future completion
