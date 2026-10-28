@@ -49,6 +49,8 @@ jobs:
           ./scripts/verify-core.sh
           python3 -m py_compile scripts/*.py
           for source in scripts/*.sh; do bash -n "$source"; done
+      - name: Verify network probe distinguishes HTTP authentication from connection denial
+        run: python3 scripts/test-network-probe.py
       - name: Test readiness retry contracts
         run: python3 scripts/test-wait-ready.py
       - name: Test load and reconciliation contracts
@@ -102,9 +104,13 @@ jobs:
           terraform -chdir=infra/aws test
   kubernetes-smoke:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     needs: [contracts-and-integration, deployment-contracts, console-contracts]
     steps:
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Install checksum-verified Kubernetes tools
         run: |
