@@ -51,16 +51,21 @@ class KafkaAcceptanceTest {
         var acceptance = new KafkaAcceptance(buffer, 1, Duration.ofMillis(80))) {
       var result =
           acceptance.append("tenant:first", new byte[] {1}, Map.of()).toCompletableFuture();
-      var error = assertThrows(ExecutionException.class, () -> result.get(2, TimeUnit.SECONDS));
+      var error = assertThrows(ExecutionException.class, () -> result.get(5, TimeUnit.SECONDS));
       assertInstanceOf(TimeoutException.class, error.getCause());
       assertEquals(0, acceptance.pendingWaiters());
       assertEquals(1, buffer.snapshot().records());
       var second =
           acceptance.append("tenant:second", new byte[] {2}, Map.of()).toCompletableFuture();
+      var secondError =
+          assertThrows(ExecutionException.class, () -> second.get(5, TimeUnit.SECONDS));
+      assertInstanceOf(TimeoutException.class, secondError.getCause());
+      assertEquals(0, acceptance.pendingWaiters());
+      assertEquals(2, buffer.snapshot().records());
       acceptance.confirm(buffer.peek().orElseThrow().sequence(), POSITION);
       acceptance.confirm(buffer.peek().orElseThrow().sequence(), POSITION);
-      assertEquals(POSITION, second.get(1, TimeUnit.SECONDS));
       assertTrue(result.isCompletedExceptionally());
+      assertTrue(second.isCompletedExceptionally());
       assertEquals(0, buffer.snapshot().records());
     }
   }

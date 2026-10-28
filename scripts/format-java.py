@@ -23,7 +23,7 @@ if not jar.exists():
         jar.write_bytes(response.read())
 if hashlib.sha256(jar.read_bytes()).hexdigest() != CHECKSUM:
     raise SystemExit("Formatter checksum mismatch")
-files = sorted(str(p) for module in ("core", "platform-config", "durable-buffer", "platform-observability", "event-schemas", "service")
+files = sorted(str(p) for module in ("core", "platform-config", "durable-buffer", "platform-observability", "event-schemas", "service", "tools/capacity-probe")
                for p in (root / module / "src").rglob("*.java"))
 java = str(Path(os.environ["JAVA_HOME"]) / "bin/java") if "JAVA_HOME" in os.environ else "java"
 options = ["--replace"] if args.write else ["--dry-run", "--set-exit-if-changed"]

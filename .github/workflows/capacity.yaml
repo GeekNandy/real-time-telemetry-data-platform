@@ -1,0 +1,69 @@
+name: Capacity experiment
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/capacity.yaml
+      - scripts/capacity-*.py
+      - scripts/test-capacity.py
+      - tools/capacity-probe/**
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Pilot validates the harness; full runs ten-minute phases at three rates with three repetitions
+        required: true
+        default: pilot
+        type: choice
+        options: [pilot, full]
+permissions:
+  contents: read
+concurrency:
+  group: capacity-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      mode: ${{ steps.plan.outputs.mode }}
+    steps:
+      - id: plan
+        env:
+          CAPACITY_MODE: ${{ github.event_name == 'pull_request' && 'pilot' || inputs.mode }}
+        run: |
+          python3 - <<'PY'
+          import json,os
+          mode=os.environ['CAPACITY_MODE']
+          assert mode in ('pilot','full')
+          cases=[{'rate':r,'repeat':n} for r in (10,50,150) for n in (1,2,3)] if mode=='full' else [{'rate':10,'repeat':1}]
+          with open(os.environ['GITHUB_OUTPUT'],'a') as output:
+              output.write('matrix='+json.dumps({'include':cases})+'\nmode='+mode+'\n')
+          PY
+  experiment:
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 9
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Verify reporting contracts
+        run: python3 scripts/test-capacity.py
+      - name: Measure baseline, Kafka-confirmed and profiled fresh runtimes
+        run: python3 scripts/capacity-run.py --mode '${{ needs.plan.outputs.mode }}' --rate '${{ matrix.rate }}' --repeat '${{ matrix.repeat }}' --output 'data/capacity/rate-${{ matrix.rate }}-repeat-${{ matrix.repeat }}'
+      - name: Retain bounded synthetic measurement evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: capacity-${{ needs.plan.outputs.mode }}-${{ matrix.rate }}-${{ matrix.repeat }}
+          path: data/capacity/**/artifact/
+          retention-days: 1
+          if-no-files-found: error
