@@ -269,7 +269,9 @@ class ReplicatedAcceptanceIT {
 
   private long pendingFiles() throws Exception {
     try (var paths = Files.list(directory.resolve("wal"))) {
-      return paths.filter(path -> path.toString().endsWith(".evt")).count();
+      return paths
+          .filter(path -> path.toString().endsWith(".evt") || path.toString().endsWith(".grp"))
+          .count();
     }
   }
 

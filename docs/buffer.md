@@ -4,19 +4,31 @@ Each collector volume has one process owner. Append writes a bounded checksummed
 frame, forces file contents, atomically renames it and forces the directory.
 An append completion assumes the volume is retained; it does not provide replication.
 
-Bounded `appendBatch` writes and forces each ordinary record file before sharing
-one directory synchronization across their atomic renames. It validates the whole
-batch and its count/encoded-byte budget before any write. The frame and checkpoint
-formats are unchanged. The batch byte target permits one larger valid record alone,
-preserving the configured single-record append limit. If a write fails partway through, every renamed prefix
-member remains charged and replayable; the batch caller receives an ambiguous
-failure, never a partial success receipt.
+Bounded `appendBatch` places two or more independently checksummed record frames
+in one checksummed group file. One file synchronization, atomic rename and
+directory synchronization cover the entire group. The whole count, framing and
+physical-byte budget is validated before writing. A single record still uses its
+ordinary `.evt` file and may exceed the 4 MiB group limit if allowed by the
+configured record limit. Groups contain at most 256 records / 4 MiB, including
+their framing. A failed temporary write exposes no member; a renamed group whose
+directory sync fails remains fully charged and replayable, with ambiguous client
+outcomes rather than partial success receipts.
+
+The reader accepts existing `.evt` files and new `.grp` files in the same volume;
+checkpoint format is unchanged. Group sequence range, count, lengths, checksums,
+ordering and absence of overlaps are checked before admission reopens. Older
+binaries cannot read group files and fail closed on them. Drain a volume fully
+with this reader before rolling back to a binary that only understands `.evt`.
 
 Delivery checkpointing and file reclamation are separate recoverable states.
 After confirmed downstream delivery, the delivered checkpoint is forced before
 the record is removed. If unlinking fails, a later acknowledgement retries cleanup
 even though the checkpoint already covers the sequence. An already-absent delivered
-file is safe to reclaim from memory. Capacity is released only after that cleanup.
+file is safe to reclaim from memory. A partially delivered group retains its
+entire physical-byte charge until its last pending member is checkpointed and
+the shared file is removed. Recovery skips delivered members while retaining
+that whole-file charge. This prevents a partially drained group from lending
+still-allocated disk bytes to new admissions.
 
 Append and checkpoint have separate operation locks. Brief state updates use one
 monitor; file reads and synchronization run outside it. Checkpoint reads share the
@@ -34,8 +46,8 @@ receipts still require Kafka acknowledgement and the durable local checkpoint.
 
 The collector queues copied append intents on one writer, bounded by both record
 count and a conservative 4 MiB byte charge, including in-progress writes. A batch
-has at most 32 intents and a 1 MiB byte target. A lone intent waits at most 2 ms
-for a peer; existing queued work drains immediately. Expiring an HTTP waiter does
+has at most 32 intents and a 1 MiB byte target. It coalesces for at most 10 ms,
+or drains immediately when 32 intents are available. Expiring an HTTP waiter does
 not release the queued intent's resource charge before its disk attempt finishes.
 Shutdown rejects unwritten intents and waits for the in-progress writer; it never
 deletes existing durable records. The API returns 202 only after downstream
@@ -46,11 +58,13 @@ termination, restart, out-of-order acknowledgement, and a real filesystem unlink
 failure after checkpointing. The latter must recover without restarting the process.
 Controlled stalls around real filesystem synchronization also verify independent
 append/checkpoint progress, responsive snapshots, shutdown ownership, and recovery
-of an append whose directory sync failed.
+of an append whose directory sync failed. Group tests also force-kill a separate
+writer process, corrupt framing and checksums, mix legacy/group files, checkpoint
+within a group, reject overlapping ranges, and exercise final-file unlink recovery.
 
 ```bash
 ./mvnw --batch-mode --no-transfer-progress verify
 ```
 
-File-per-event synchronization favors a small auditable protocol. Its throughput
-and filesystem overhead require measurement before any capacity claim.
+Sharing synchronization barriers is an implementation property; its effect on
+whole-service latency and capacity requires measurement against the fixed SLOs.

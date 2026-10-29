@@ -24,8 +24,7 @@ class DiskBufferBatchTest {
   }
 
   @Test
-  void everyFileIsForcedBeforeTheSharedDirectoryBarrierAndUsesTheExistingRecoveryFormat()
-      throws Exception {
+  void oneGroupIsForcedBeforeTheDirectoryBarrierAndRecoversItsUnconfirmedSuffix() throws Exception {
     var files = new AtomicInteger();
     var directories = new AtomicInteger();
     var disk =
@@ -44,7 +43,7 @@ class DiskBufferBatchTest {
       directories.set(0);
       var result = buffer.appendBatch(List.of(intent("a:one"), intent("a:two"), intent("a:three")));
       assertEquals(List.of(1L, 2L, 3L), result.stream().map(DiskBuffer.Entry::sequence).toList());
-      assertEquals(3, files.get());
+      assertEquals(1, files.get());
       assertEquals(1, directories.get());
       assertEquals(3, buffer.snapshot().records());
       buffer.acknowledgeBatch(List.of(1L, 2L));
@@ -88,14 +87,15 @@ class DiskBufferBatchTest {
   }
 
   @Test
-  void aPartialWriteFailureChargesAndRecoversItsRenamedPrefixWithoutSkippingASequence()
-      throws Exception {
+  void anIncompleteGroupWriteCannotExposeAnyMemberOrConsumeASequence() throws Exception {
     var fail = new AtomicBoolean(true);
     var disk =
         new DiskBuffer.Durability() {
           public void writeForced(Path path, byte[] content) throws IOException {
-            if (path.getFileName().toString().equals("00000000000000000002.tmp")
-                && fail.getAndSet(false)) throw new IOException("Injected second-file failure");
+            if (fail.getAndSet(false)) {
+              java.nio.file.Files.write(path, java.util.Arrays.copyOf(content, content.length / 2));
+              throw new IOException("Injected incomplete group write");
+            }
             DiskBuffer.FILESYSTEM.writeForced(path, content);
           }
 
@@ -107,13 +107,13 @@ class DiskBufferBatchTest {
       assertThrows(
           IOException.class,
           () -> buffer.appendBatch(List.of(intent("a:one"), intent("a:two"), intent("a:three"))));
-      assertEquals(1, buffer.snapshot().records());
-      assertEquals("a:one", buffer.peek().orElseThrow().key());
-      assertEquals(2, buffer.append("a:retry", new byte[] {2}, Map.of()).sequence());
+      assertEquals(0, buffer.snapshot().records());
+      assertEquals(0, buffer.snapshot().bytes());
+      assertEquals(1, buffer.append("a:retry", new byte[] {2}, Map.of()).sequence());
     }
     try (var recovered = new DiskBuffer(directory, limits)) {
       assertEquals(
-          List.of("a:one", "a:retry"),
+          List.of("a:retry"),
           recovered.peekBatch(10, 4096).stream().map(DiskBuffer.Entry::key).toList());
     }
   }
@@ -214,7 +214,7 @@ class DiskBufferBatchTest {
           pool.submit(
               () ->
                   buffer.appendBatch(
-                      List.of(intent("a:one")),
+                      List.of(intent("a:one"), intent("a:two")),
                       entries -> {
                         assertEquals(1, entries.getFirst().sequence());
                         entered.countDown();
@@ -233,7 +233,7 @@ class DiskBufferBatchTest {
       } finally {
         release.countDown();
       }
-      assertEquals(1, appending.get(5, TimeUnit.SECONDS).size());
+      assertEquals(2, appending.get(5, TimeUnit.SECONDS).size());
       assertEquals(1, buffer.peek().orElseThrow().sequence());
     }
   }

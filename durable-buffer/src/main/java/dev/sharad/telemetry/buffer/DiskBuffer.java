@@ -27,7 +27,7 @@ import java.util.TreeMap;
 import java.util.zip.CRC32C;
 
 /**
- * A bounded file-per-record spool for a persistent local volume. Append completes after file fsync,
+ * A bounded checksummed spool for a persistent local volume. Append completes after file fsync,
  * atomic rename and directory fsync. The single dispatcher checkpoints only after a confirmed Kafka
  * acknowledgement. Survives process restart; this is not replication or protection against volume
  * loss.
@@ -36,6 +36,8 @@ public final class DiskBuffer implements AutoCloseable {
   public static final int MAX_BATCH_RECORDS = 256;
   public static final long MAX_BATCH_BYTES = 4L * 1024 * 1024;
   private static final int MAGIC = 0x52545450;
+  private static final int GROUP_MAGIC = 0x52544750;
+  private static final int GROUP_HEADER_BYTES = 16;
   private static final int HEADER_BYTES =
       Integer.BYTES + Short.BYTES + Long.BYTES * 2 + Integer.BYTES * 2;
   private final Path directory;
@@ -77,9 +79,13 @@ public final class DiskBuffer implements AutoCloseable {
         }
       };
 
-  private record Pending(Path path, Instant createdAt, long bytes) {}
+  private record Pending(Path path, Instant createdAt, long bytes, long offset) {}
+
+  private record Allocation(long bytes, int references) {}
 
   private final TreeMap<Long, Pending> pending = new TreeMap<>();
+  // A partially acknowledged group retains its entire physical file until its last member drains.
+  private final Map<Path, Allocation> allocations = new HashMap<>();
   private long usedBytes;
   private long deliveredSequence;
   private long nextSequence = 1;
@@ -110,9 +116,7 @@ public final class DiskBuffer implements AutoCloseable {
       long deliveredSequence,
       long oldestAgeMillis) {}
 
-  /**
-   * A defensively copied append intent; a batch still keeps the existing file-per-record format.
-   */
+  /** A defensively copied append intent. */
   public record Append(String key, byte[] payload, Map<String, String> traceHeaders) {
     public Append {
       if (key == null || key.length() > 256 || key.isBlank() || payload == null)
@@ -171,7 +175,7 @@ public final class DiskBuffer implements AutoCloseable {
   }
 
   /**
-   * Force every file, then share the rename-directory durability barrier across a bounded batch.
+   * One forced, atomically published file holds a bounded group of independently checked frames.
    */
   public List<Entry> appendBatch(List<Append> records) throws IOException {
     return appendBatch(records, entries -> {});
@@ -218,10 +222,13 @@ public final class DiskBuffer implements AutoCloseable {
                 directory.resolve(String.format("%020d.tmp", entry.sequence())),
                 directory.resolve(String.format("%020d.evt", entry.sequence()))));
       }
+      byte[] group = prepared.size() > 1 ? encodeGroup(prepared) : null;
+      long physicalBytes = group == null ? bytes : group.length;
       synchronized (this) {
         if (prepared.size() > limits.maxRecords() - pending.size()
-            || bytes > limits.maxBytes() - usedBytes) throw new Full();
+            || physicalBytes > limits.maxBytes() - usedBytes) throw new Full();
       }
+      if (group != null) return appendGroup(prepared, group, beforeVisible);
       // Only this appender can consume budget; concurrent checkpoints can only release it.
       var committed = new ArrayList<Prepared>();
       boolean allWritten = false;
@@ -247,7 +254,8 @@ public final class DiskBuffer implements AutoCloseable {
                   var entry = item.entry();
                   pending.put(
                       entry.sequence(),
-                      new Pending(item.committed(), entry.createdAt(), item.frame().length));
+                      new Pending(item.committed(), entry.createdAt(), item.frame().length, 0));
+                  allocations.put(item.committed(), new Allocation(item.frame().length, 1));
                   usedBytes += item.frame().length;
                   nextSequence = entry.sequence() + 1;
                 }
@@ -263,14 +271,79 @@ public final class DiskBuffer implements AutoCloseable {
     }
   }
 
+  private byte[] encodeGroup(List<Prepared> prepared) throws IOException {
+    var body = new ByteArrayOutputStream();
+    try (var output = new DataOutputStream(body)) {
+      for (var item : prepared) {
+        if ((long) GROUP_HEADER_BYTES + body.size() + Integer.BYTES + item.frame().length
+            > MAX_BATCH_BYTES)
+          throw new IllegalArgumentException("Append group exceeds the byte limit");
+        output.writeInt(item.frame().length);
+        output.write(item.frame());
+      }
+    }
+    byte[] content = body.toByteArray();
+    var crc = new CRC32C();
+    crc.update(content);
+    return ByteBuffer.allocate(GROUP_HEADER_BYTES + content.length)
+        .putInt(GROUP_MAGIC)
+        .putInt(1)
+        .putInt(prepared.size())
+        .putInt((int) crc.getValue())
+        .put(content)
+        .array();
+  }
+
+  private List<Entry> appendGroup(
+      List<Prepared> prepared, byte[] group, java.util.function.Consumer<List<Entry>> beforeVisible)
+      throws IOException {
+    String name =
+        String.format(
+            "%020d-%020d",
+            prepared.getFirst().entry().sequence(), prepared.getLast().entry().sequence());
+    Path temporary = directory.resolve(name + ".tmp");
+    Path committed = directory.resolve(name + ".grp");
+    var entries = prepared.stream().map(Prepared::entry).toList();
+    boolean renamed = false;
+    try {
+      durability.writeForced(temporary, group);
+      Files.move(temporary, committed, StandardCopyOption.ATOMIC_MOVE);
+      renamed = true;
+      try {
+        durability.forceDirectory(directory);
+        beforeVisible.accept(entries);
+      } finally {
+        synchronized (this) {
+          long offset = GROUP_HEADER_BYTES;
+          for (var item : prepared) {
+            offset += Integer.BYTES;
+            var entry = item.entry();
+            pending.put(
+                entry.sequence(),
+                new Pending(committed, entry.createdAt(), item.frame().length, offset));
+            offset += item.frame().length;
+          }
+          allocations.put(committed, new Allocation(group.length, prepared.size()));
+          usedBytes += group.length;
+          nextSequence = entries.getLast().sequence() + 1;
+          notifyAll();
+        }
+      }
+      return entries;
+    } finally {
+      // An incomplete temporary group has never been acknowledged; a renamed group remains charged.
+      if (!renamed) Files.deleteIfExists(temporary);
+    }
+  }
+
   public Optional<Entry> peek() throws IOException {
     synchronized (checkpointLock) {
-      Path head;
+      Pending head;
       synchronized (this) {
         requireOpen();
-        head = pending.isEmpty() ? null : pending.firstEntry().getValue().path();
+        head = pending.isEmpty() ? null : pending.firstEntry().getValue();
       }
-      return head == null ? Optional.empty() : Optional.of(read(head));
+      return head == null ? Optional.empty() : Optional.of(readPending(head));
     }
   }
 
@@ -294,7 +367,7 @@ public final class DiskBuffer implements AutoCloseable {
         }
       }
       var result = new ArrayList<Entry>();
-      for (var record : selected) result.add(read(record.path()));
+      for (var record : selected) result.add(readPending(record));
       return List.copyOf(result);
     }
   }
@@ -382,12 +455,20 @@ public final class DiskBuffer implements AutoCloseable {
       synchronized (this) {
         head = pending.firstEntry();
         if (head == null || head.getKey() > deliveredSequence) break;
+        var allocation = allocations.get(head.getValue().path());
+        if (allocation.references() > 1) {
+          pending.remove(head.getKey());
+          allocations.put(
+              head.getValue().path(),
+              new Allocation(allocation.bytes(), allocation.references() - 1));
+          continue;
+        }
       }
       // A prior attempt may have deleted the file before its directory sync failed.
       Files.deleteIfExists(head.getValue().path());
       synchronized (this) {
         pending.remove(head.getKey());
-        usedBytes -= head.getValue().bytes();
+        usedBytes -= allocations.remove(head.getValue().path()).bytes();
       }
       removed = true;
     }
@@ -453,9 +534,14 @@ public final class DiskBuffer implements AutoCloseable {
             Files.delete(path); // Crash after checkpoint, before file reclamation.
           } else {
             long bytes = Files.size(path);
-            pending.put(entry.sequence(), new Pending(path, entry.createdAt(), bytes));
+            if (pending.putIfAbsent(
+                    entry.sequence(), new Pending(path, entry.createdAt(), bytes, 0))
+                != null) throw new Corrupt("Overlapping spool entries");
+            allocations.put(path, new Allocation(bytes, 1));
             usedBytes += bytes;
           }
+        } else if (name.matches("[0-9]{20}-[0-9]{20}\\.grp")) {
+          recoverGroup(path);
         } else if (!name.equals(".lock") && !name.equals("checkpoint")) {
           throw new Corrupt("Unexpected file in private buffer directory");
         }
@@ -467,6 +553,59 @@ public final class DiskBuffer implements AutoCloseable {
     }
     nextSequence = Math.max(deliveredSequence, pending.isEmpty() ? 0 : pending.lastKey()) + 1;
     durability.forceDirectory(directory);
+  }
+
+  private void recoverGroup(Path path) throws IOException {
+    long size = Files.size(path);
+    if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)
+        || size < GROUP_HEADER_BYTES
+        || size > MAX_BATCH_BYTES) throw new Corrupt("Invalid append group size or type");
+    ByteBuffer data = ByteBuffer.wrap(Files.readAllBytes(path));
+    if (data.getInt() != GROUP_MAGIC || data.getInt() != 1)
+      throw new Corrupt("Unsupported append group");
+    int count = data.getInt();
+    int checksum = data.getInt();
+    if (count < 2 || count > MAX_BATCH_RECORDS) throw new Corrupt("Invalid append group count");
+    var crc = new CRC32C();
+    crc.update(data.asReadOnlyBuffer());
+    if ((int) crc.getValue() != checksum) throw new Corrupt("Append group checksum mismatch");
+    String name = path.getFileName().toString();
+    long first;
+    long last;
+    try {
+      first = Long.parseLong(name.substring(0, 20));
+      last = Long.parseLong(name.substring(21, 41));
+    } catch (NumberFormatException invalid) {
+      throw new Corrupt("Invalid append group sequence");
+    }
+    if (first < 1 || last < first || last - first != count - 1)
+      throw new Corrupt("Append group sequence range mismatch");
+    int retained = 0;
+    for (int index = 0; index < count; index++) {
+      if (data.remaining() < Integer.BYTES) throw new Corrupt("Truncated append group");
+      int length = data.getInt();
+      if (length < HEADER_BYTES || length > limits.maxRecordBytes() || length > data.remaining())
+        throw new Corrupt("Invalid append group frame size");
+      long offset = data.position();
+      var frame = data.slice();
+      frame.limit(length);
+      Entry entry = decode(frame);
+      if (entry.sequence() != first + index) throw new Corrupt("Append group sequence mismatch");
+      data.position(data.position() + length);
+      if (entry.sequence() > deliveredSequence) {
+        if (pending.putIfAbsent(
+                entry.sequence(), new Pending(path, entry.createdAt(), length, offset))
+            != null) throw new Corrupt("Overlapping spool entries");
+        retained++;
+      }
+    }
+    if (data.hasRemaining()) throw new Corrupt("Trailing append group data");
+    if (retained == 0) {
+      Files.delete(path);
+    } else {
+      allocations.put(path, new Allocation(size, retained));
+      usedBytes += size;
+    }
   }
 
   private byte[] encode(
@@ -501,7 +640,23 @@ public final class DiskBuffer implements AutoCloseable {
     long size = Files.size(path);
     if (size < HEADER_BYTES || size > limits.maxRecordBytes())
       throw new Corrupt("Invalid spool frame size");
-    ByteBuffer frame = ByteBuffer.wrap(Files.readAllBytes(path));
+    return decode(ByteBuffer.wrap(Files.readAllBytes(path)));
+  }
+
+  private Entry readPending(Pending pending) throws IOException {
+    if (pending.offset() == 0) return read(pending.path());
+    var frame = ByteBuffer.allocate(Math.toIntExact(pending.bytes()));
+    try (var channel = FileChannel.open(pending.path(), StandardOpenOption.READ)) {
+      channel.position(pending.offset());
+      while (frame.hasRemaining()) {
+        if (channel.read(frame) < 0) throw new Corrupt("Truncated append group frame");
+      }
+    }
+    frame.flip();
+    return decode(frame);
+  }
+
+  private Entry decode(ByteBuffer frame) throws IOException {
     if (frame.getInt() != MAGIC || frame.getShort() != 1)
       throw new Corrupt("Unsupported spool frame");
     long sequence = frame.getLong();
