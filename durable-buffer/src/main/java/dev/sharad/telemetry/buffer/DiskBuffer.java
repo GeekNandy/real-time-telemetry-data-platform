@@ -174,6 +174,16 @@ public final class DiskBuffer implements AutoCloseable {
    * Force every file, then share the rename-directory durability barrier across a bounded batch.
    */
   public List<Entry> appendBatch(List<Append> records) throws IOException {
+    return appendBatch(records, entries -> {});
+  }
+
+  /**
+   * Register waiters after synchronization but before dispatcher visibility; no subscriber calls.
+   */
+  public List<Entry> appendBatch(
+      List<Append> records, java.util.function.Consumer<List<Entry>> beforeVisible)
+      throws IOException {
+    java.util.Objects.requireNonNull(beforeVisible);
     if (records == null || records.isEmpty() || records.size() > MAX_BATCH_RECORDS)
       throw new IllegalArgumentException("Invalid append batch");
     records = List.copyOf(records);
@@ -214,17 +224,21 @@ public final class DiskBuffer implements AutoCloseable {
       }
       // Only this appender can consume budget; concurrent checkpoints can only release it.
       var committed = new ArrayList<Prepared>();
+      boolean allWritten = false;
       try {
         for (var item : prepared) {
           durability.writeForced(item.temporary(), item.frame());
           Files.move(item.temporary(), item.committed(), StandardCopyOption.ATOMIC_MOVE);
           committed.add(item);
         }
+        allWritten = true;
       } finally {
         try {
           if (!committed.isEmpty()) {
             try {
               durability.forceDirectory(directory);
+              if (allWritten)
+                beforeVisible.accept(committed.stream().map(Prepared::entry).toList());
             } finally {
               // A partial write or failed directory sync has ambiguous client outcomes. Charge
               // every renamed file and expose that prefix only after its sync attempt finishes.

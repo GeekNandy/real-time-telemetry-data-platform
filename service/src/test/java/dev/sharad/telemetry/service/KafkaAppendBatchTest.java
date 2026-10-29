@@ -17,9 +17,11 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -60,13 +62,13 @@ class KafkaAppendBatchTest {
                 64,
                 Duration.ofSeconds(30),
                 meters,
-                records -> {
+                (records, beforeVisible) -> {
                   sizes.add(records.size());
                   if (first.getAndSet(false)) {
                     entered.countDown();
                     waitFor(release);
                   }
-                  return buffer.appendBatch(records);
+                  buffer.appendBatch(records, beforeVisible);
                 })) {
       var results = new ArrayList<CompletableFuture<DurableLog.Position>>();
       results.add(
@@ -111,10 +113,10 @@ class KafkaAppendBatchTest {
                 2,
                 Duration.ofMillis(150),
                 meters,
-                records -> {
+                (records, beforeVisible) -> {
                   entered.countDown();
                   waitFor(release);
-                  return buffer.appendBatch(records);
+                  buffer.appendBatch(records, beforeVisible);
                 })) {
       var first = acceptance.append("tenant:first", new byte[] {1}, Map.of()).toCompletableFuture();
       try {
@@ -153,10 +155,10 @@ class KafkaAppendBatchTest {
               4,
               Duration.ofSeconds(30),
               meters,
-              records -> {
+              (records, beforeVisible) -> {
                 entered.countDown();
                 waitFor(release);
-                return buffer.appendBatch(records);
+                buffer.appendBatch(records, beforeVisible);
               });
       try {
         var first =
@@ -205,7 +207,7 @@ class KafkaAppendBatchTest {
                 8,
                 Duration.ofSeconds(30),
                 meters,
-                records -> {
+                (records, beforeVisible) -> {
                   if (firstCall.getAndSet(false)) {
                     entered.countDown();
                     waitFor(release);
@@ -239,6 +241,51 @@ class KafkaAppendBatchTest {
               .toList());
       assertTrue(results.stream().allMatch(CompletableFuture::isCompletedExceptionally));
       assertEquals(0, buffer.snapshot().records());
+    }
+  }
+
+  @Test
+  void anAlreadyPublishedReceiptDoesNotWaitForAnUnrelatedStalledAppend() throws Exception {
+    var entered = new CountDownLatch(1);
+    var release = new CountDownLatch(1);
+    var calls = new AtomicInteger();
+    try (var buffer = buffer();
+        var acceptance =
+            new KafkaAcceptance(
+                buffer,
+                8,
+                Duration.ofSeconds(30),
+                meters,
+                (records, beforeVisible) -> {
+                  if (calls.incrementAndGet() == 2) {
+                    entered.countDown();
+                    waitFor(release);
+                  }
+                  buffer.appendBatch(records, beforeVisible);
+                });
+        var confirmer = Executors.newSingleThreadExecutor()) {
+      var first =
+          acceptance.append("tenant:confirmed", new byte[] {1}, Map.of()).toCompletableFuture();
+      await().atMost(Duration.ofSeconds(5)).until(() -> acceptance.pendingWrites() == 0);
+      var second =
+          acceptance.append("tenant:stalled", new byte[] {2}, Map.of()).toCompletableFuture();
+      try {
+        assertTrue(entered.await(5, TimeUnit.SECONDS));
+        var confirmation =
+            confirmer.submit(
+                () -> {
+                  acceptance.confirm(1, POSITION);
+                  return null;
+                });
+        confirmation.get(5, TimeUnit.SECONDS);
+        assertEquals(POSITION, first.get(5, TimeUnit.SECONDS));
+        assertFalse(second.isDone());
+      } finally {
+        release.countDown();
+      }
+      await().atMost(Duration.ofSeconds(5)).until(() -> acceptance.pendingWrites() == 0);
+      acceptance.confirm(2, POSITION);
+      assertEquals(POSITION, second.get(5, TimeUnit.SECONDS));
     }
   }
 }

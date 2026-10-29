@@ -47,7 +47,10 @@ final class KafkaAcceptance implements AutoCloseable {
 
   @FunctionalInterface
   interface Appender {
-    List<DiskBuffer.Entry> append(List<DiskBuffer.Append> records) throws IOException;
+    void append(
+        List<DiskBuffer.Append> records,
+        java.util.function.Consumer<List<DiskBuffer.Entry>> beforeVisible)
+        throws IOException;
   }
 
   private final DiskBuffer buffer;
@@ -57,8 +60,6 @@ final class KafkaAcceptance implements AutoCloseable {
   private final Map<Long, Waiter> waiting = new HashMap<>();
   private final Set<Waiter> active = new HashSet<>();
   private final ArrayDeque<Write> queued = new ArrayDeque<>();
-  // Registration may span disk I/O; admissions, timeouts and close never acquire this lock.
-  private final Object registration = new Object();
   private final ScheduledThreadPoolExecutor deadlines;
   private final Thread writer;
   private final Timer appendDuration;
@@ -186,18 +187,21 @@ final class KafkaAcceptance implements AutoCloseable {
   private void persist(List<Write> batch) {
     Exception failure = null;
     try {
-      synchronized (registration) {
-        var entries = appender.append(batch.stream().map(Write::record).toList());
-        synchronized (this) {
-          for (int index = 0; index < batch.size(); index++) {
-            var waiter = batch.get(index).waiter();
-            if (active.contains(waiter)) {
-              waiter.sequence = entries.get(index).sequence();
-              waiting.put(waiter.sequence, waiter);
+      appender.append(
+          batch.stream().map(Write::record).toList(),
+          entries -> {
+            if (entries.size() != batch.size())
+              throw new IllegalStateException("Incomplete append registration");
+            synchronized (this) {
+              for (int index = 0; index < batch.size(); index++) {
+                var waiter = batch.get(index).waiter();
+                if (active.contains(waiter)) {
+                  waiter.sequence = entries.get(index).sequence();
+                  waiting.put(waiter.sequence, waiter);
+                }
+              }
             }
-          }
-        }
-      }
+          });
     } catch (IOException | RuntimeException error) {
       failure = error;
     } finally {
@@ -206,8 +210,10 @@ final class KafkaAcceptance implements AutoCloseable {
         for (var write : batch) {
           pendingWrites--;
           queuedBytes -= write.charge();
-          if (failure != null && active.remove(write.waiter()))
+          if (failure != null && active.remove(write.waiter())) {
+            waiting.remove(write.waiter().sequence, write.waiter());
             write.waiter().timeout.cancel(false);
+          }
         }
       }
       for (var write : batch) {
@@ -229,19 +235,17 @@ final class KafkaAcceptance implements AutoCloseable {
     confirmed = List.copyOf(confirmed);
     var settled = new ArrayList<Map.Entry<Waiter, DurableLog.Position>>();
     buffer.acknowledgeBatch(confirmed.stream().map(Confirmed::sequence).toList());
-    synchronized (registration) {
-      synchronized (this) {
-        for (var item : confirmed) {
-          Waiter waiter = waiting.remove(item.sequence());
-          if (waiter != null) {
-            active.remove(waiter);
-            waiter.timeout.cancel(false);
-            settled.add(Map.entry(waiter, item.position()));
-          }
+    synchronized (this) {
+      for (var item : confirmed) {
+        Waiter waiter = waiting.remove(item.sequence());
+        if (waiter != null) {
+          active.remove(waiter);
+          waiter.timeout.cancel(false);
+          settled.add(Map.entry(waiter, item.position()));
         }
       }
     }
-    // Subscriber callbacks run outside both registration and state locks.
+    // Subscriber callbacks run outside the state monitor and filesystem protocol.
     for (var item : settled) item.getKey().result.complete(item.getValue());
   }
 

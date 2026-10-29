@@ -203,4 +203,38 @@ class DiskBufferBatchTest {
       assertEquals(2, appending.get(5, TimeUnit.SECONDS).size());
     }
   }
+
+  @Test
+  void publicationCannotOvertakePostSyncWaiterRegistration() throws Exception {
+    var entered = new CountDownLatch(1);
+    var release = new CountDownLatch(1);
+    try (var buffer = new DiskBuffer(directory, limits);
+        var pool = Executors.newFixedThreadPool(2)) {
+      var appending =
+          pool.submit(
+              () ->
+                  buffer.appendBatch(
+                      List.of(intent("a:one")),
+                      entries -> {
+                        assertEquals(1, entries.getFirst().sequence());
+                        entered.countDown();
+                        try {
+                          if (!release.await(10, TimeUnit.SECONDS))
+                            throw new IllegalStateException("Registration wait expired");
+                        } catch (InterruptedException error) {
+                          Thread.currentThread().interrupt();
+                          throw new IllegalStateException(error);
+                        }
+                      }));
+      try {
+        assertTrue(entered.await(5, TimeUnit.SECONDS));
+        assertTrue(pool.submit(buffer::peek).get(5, TimeUnit.SECONDS).isEmpty());
+        assertFalse(appending.isDone());
+      } finally {
+        release.countDown();
+      }
+      assertEquals(1, appending.get(5, TimeUnit.SECONDS).size());
+      assertEquals(1, buffer.peek().orElseThrow().sequence());
+    }
+  }
 }

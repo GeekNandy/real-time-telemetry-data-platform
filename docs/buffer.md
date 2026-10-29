@@ -27,8 +27,9 @@ sync attempt finishes. A renamed record remains charged and replayable if that
 sync reports an ambiguous failure.
 
 Shutdown waits for both disk protocols before releasing exclusive volume ownership.
-Kafka acceptance does checkpoint I/O outside its waiter monitor, then settles
-receipts after the append registration lock establishes its waiters. Successful
+Kafka acceptance registers waiters in a short callback after directory sync and
+before the appended entries become visible. Confirmation therefore needs no lock
+held across another append's I/O. Successful
 receipts still require Kafka acknowledgement and the durable local checkpoint.
 
 The collector queues copied append intents on one writer, bounded by both record
