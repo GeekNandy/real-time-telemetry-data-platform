@@ -9,8 +9,9 @@ ROOT=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('slo_tool',ROOT/'scripts/slo-tool.py')
 TOOL=importlib.util.module_from_spec(spec);spec.loader.exec_module(TOOL)
 
-def aggregate(root,mode):
-    expected={(p,r) for p in ('reference','scale') for r in (1,2,3)}|{('soak',1),('burst',1)} if mode=='full' else {('reference',1)}
+def aggregate(root,mode,pilot_profile='reference'):
+    if pilot_profile not in ('reference','scale'):raise ValueError('Invalid pilot profile')
+    expected={(p,r) for p in ('reference','scale') for r in (1,2,3)}|{('soak',1),('burst',1)} if mode=='full' else {(pilot_profile,1)}
     found={};phases=[];revisions=set();errors=[]
     protocol=hashlib.sha256((ROOT/'tools/slo/workload.js').read_bytes()).hexdigest()
     profiles=hashlib.sha256((ROOT/'tools/slo/profiles.json').read_bytes()).hexdigest()
@@ -48,6 +49,7 @@ def aggregate(root,mode):
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--root',type=Path,required=True)
     parser.add_argument('--mode',choices=('pilot','full'),required=True);parser.add_argument('--output',type=Path,required=True)
-    args=parser.parse_args();result=aggregate(args.root,args.mode)
+    parser.add_argument('--pilot-profile',choices=('reference','scale'),default='reference')
+    args=parser.parse_args();result=aggregate(args.root,args.mode,args.pilot_profile)
     args.output.write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result,indent=2))
     if args.mode=='full' and not result['passed']:raise SystemExit(1)

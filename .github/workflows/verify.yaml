@@ -51,6 +51,8 @@ jobs:
           for source in scripts/*.sh; do bash -n "$source"; done
       - name: Verify network probe distinguishes HTTP authentication from connection denial
         run: python3 scripts/test-network-probe.py
+      - name: Verify JFR working chunks use the recording volume with an actual JVM
+        run: python3 scripts/test-jfr-storage.py
       - name: Test readiness retry contracts
         run: python3 scripts/test-wait-ready.py
       - name: Test load and reconciliation contracts

@@ -132,7 +132,7 @@ def value(summary, name, statistic='count', default=0):
     return summary['metrics'].get(name, {}).get('values', {}).get(statistic, default)
 
 
-def audit(path, config):
+def audit(path, config, *, require_schedule=True):
     """Require complete, internally consistent identities before calculating SLOs."""
     result = summary(path)
     rows = [row for kind, row in events(path) if kind == 'SLO_RECORD']
@@ -145,8 +145,6 @@ def audit(path, config):
     dropped = value(result, 'dropped_iterations')
     if type(dropped) not in (int, float) or dropped < 0 or dropped != int(dropped):
         raise ValueError('Invalid dropped iteration count')
-    if abs(offered(config) - n - dropped) > 1:
-        raise ValueError('Observed offered count exceeds timer boundary allowance')
     identities = set(); indices = set()
     for row in rows:
         index = row.get('index')
@@ -183,6 +181,8 @@ def audit(path, config):
             raise ValueError('Audit counter mismatch: ' + counter)
     if value(result, 'contract_failures') < sum(row['contract_failure'] for row in rows):
         raise ValueError('Audit contract counter mismatch')
+    if require_schedule and abs(offered(config) - n - dropped) > 1:
+        raise ValueError('Observed offered count exceeds timer boundary allowance')
     rows.sort(key=lambda row: row['index'])
     return result, rows
 

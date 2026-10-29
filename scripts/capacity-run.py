@@ -79,9 +79,16 @@ def container_states(compose):
     template = ('{"service":{{json (index .Config.Labels "com.docker.compose.service")}},'
                 '"image_id":{{json .Image}},"memory_limit_bytes":{{.HostConfig.Memory}},'
                 '"nano_cpus":{{.HostConfig.NanoCpus}},"oom_killed":{{.State.OOMKilled}},'
-                '"restart_count":{{.RestartCount}},"running":{{.State.Running}}}')
+                '"restart_count":{{.RestartCount}},"running":{{.State.Running}},'
+                '"exit_code":{{.State.ExitCode}},"finished_at":{{json .State.FinishedAt}}}')
     return [json.loads(run(["docker", "inspect", "--format", template, identifier], timeout=10).stdout)
             for identifier in ids]
+
+
+def jfr_repository_option(role, root='/profiles'):
+    if role not in ('collector','worker'):
+        raise ValueError('Unknown recording role')
+    return f'-XX:FlightRecorderOptions=repository={root}/{role}-repository'
 
 
 def load(token_file, output, rate, duration):
@@ -151,6 +158,7 @@ def phase(args, name, env_file, private):
     for role in ("collector", "worker"):
         options = "-XX:MaxRAMPercentage=65 -XX:ActiveProcessorCount=1"
         if name == "acknowledged-profiled":
+            options += ' '+jfr_repository_option(role)
             options += f" -XX:StartFlightRecording=filename=/profiles/{role}.jfr,settings=/app/profile-safe.jfc,dumponexit=true,maxsize=64m,maxage=30m"
         override["services"][role] = {"image": image, "environment": {
             "JAVA_TOOL_OPTIONS": options, "TRACING_SAMPLE_RATIO": "0.1",

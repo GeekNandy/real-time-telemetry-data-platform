@@ -116,7 +116,8 @@ def phase(args,name,env_file,private):
     artifact=args.output/'artifact'/name;artifact.mkdir(parents=True)
     config=TOOL.profile(args.profile)
     if args.mode=='pilot':
-        config.update(rate_per_second=100,duration_seconds=30,virtual_users=256)
+        if args.profile not in ('reference','scale'):raise ValueError('Pilot requires reference or scale')
+        config.update(duration_seconds=30,virtual_users=256)
         config.pop('stages',None)
     config.update(mode='measure',kind='measure',collector_url='http://127.0.0.1:8080',
         worker_url='http://127.0.0.1:8082',request_timeout_ms=5000,settle_seconds=900,
@@ -128,6 +129,7 @@ def phase(args,name,env_file,private):
     for role in ('collector','worker'):
         options=f'-XX:+UseG1GC -XX:InitialRAMPercentage=40 -XX:MaxRAMPercentage=65 -XX:MaxGCPauseMillis=50 -XX:ActiveProcessorCount={config["role_cpus"]}'
         if profiled:
+            options+=' '+CAPACITY.jfr_repository_option(role)
             options+=f' -XX:StartFlightRecording=name=runtime,filename=/profiles/{role}.jfr,settings=/app/profile-safe.jfc,dumponexit=true,maxsize=128m,maxage=60m'
         if args.profile=='soak':
             options+=f' -XX:StartFlightRecording=name=retained,filename=/profiles/{role}-heap.jfr,settings=/gc-safe.jfc,dumponexit=true,maxsize=16m,maxage=60m'
@@ -146,6 +148,7 @@ def phase(args,name,env_file,private):
         token=run(['python3','scripts/demo-token.py','--env-file',str(env_file),'--tenant',tenant,'--console']).stdout.strip()
         credentials.append({'tenant':tenant,'token':token})
     private_json(private/'tokens.json',credentials)
+    (artifact/'config.json').write_text(json.dumps(config,indent=2)+'\n')
     monitor=None;probe=None;probe_log=None;stopped=threading.Event()
     try:
         print(f'Starting fresh {args.profile} / {name}, repetition {args.repeat}',flush=True)
@@ -160,7 +163,7 @@ def phase(args,name,env_file,private):
             rate_per_second=min(config['rate_per_second'],100),run_prefix=str(uuid.uuid4())[:24])
         warmup.pop('stages',None)
         warmup_status=client(warmup,private,directory/'warmup.log',args)
-        warmup_summary,warmup_rows=TOOL.audit(directory/'warmup.log',warmup)
+        warmup_summary,warmup_rows=TOOL.audit(directory/'warmup.log',warmup,require_schedule=False)
         warmup_drain=drain_warmup(compose,credentials[0]['token'],directory)
         warm_manifest=[{key:r[key] for key in ('id','tenant_slot','http_status')} for r in warmup_rows]
         warm_manifest.sort(key=lambda r:r['http_status']!=202)
@@ -172,12 +175,15 @@ def phase(args,name,env_file,private):
         for role,url in [('collector',config['collector_url']),('worker',config['worker_url'])]:
             metrics(credentials[0]['token'],url,artifact/(role+'-histograms-before.prom'))
         measured_status=client(config,private,directory/'load.log',args)
-        summary,rows=TOOL.audit(directory/'load.log',config)
+        summary,rows=TOOL.audit(directory/'load.log',config,require_schedule=False)
         manifest=[{key:r[key] for key in ('id','tenant_slot','http_status')} for r in rows]
         manifest.sort(key=lambda r:r['http_status']!=202)
-        for role,url in [('collector',config['collector_url']),('worker',config['worker_url'])]:
-            metrics(credentials[0]['token'],url,artifact/(role+'-histograms-after.prom'))
         after=CAPACITY.container_states(compose)
+        (artifact/'states-after.json').write_text(json.dumps(after,indent=2)+'\n')
+        metric_errors={}
+        for role,url in [('collector',config['collector_url']),('worker',config['worker_url'])]:
+            try:metrics(credentials[0]['token'],url,artifact/(role+'-histograms-after.prom'))
+            except Exception as error:metric_errors[role]=type(error).__name__
         if probe.poll() is not None:raise RuntimeError('Offset observer stopped during measurement')
         probe_log.flush();lag=REPORT.CAPACITY.read_jsonl(directory/'source-lag.raw.log')
         stopped.set();monitor.join(timeout=30)
@@ -187,22 +193,28 @@ def phase(args,name,env_file,private):
         TOOL.reconcile_audit(directory/'reconcile.log',manifest)
         run(compose+['stop','-t','30','collector','worker'],output=directory/'stop.log',timeout=90)
         start=rows[0]['scenario_start_ms'];end=start+config['duration_seconds']*1000
-        profiles=None;jfr_evidence=None;heap=None
+        profiles=None;jfr_evidence=None;heap=None;profile_error=None
         if profiled:
-            jfr_evidence,profiles=jfr(compose,directory,artifact,config,start,end)
+            try:jfr_evidence,profiles=jfr(compose,directory,artifact,config,start,end)
+            except Exception as error:profile_error=type(error).__name__
         if args.profile=='soak':
-            if profiles is None:
-                profiles=directory/'profiles';run(compose+['cp','collector:/profiles',str(profiles)],timeout=60)
-            heap=retained_heap(profiles,artifact,config,end)
+            try:
+                if profiles is None:
+                    profiles=directory/'profiles';run(compose+['cp','collector:/profiles',str(profiles)],timeout=60)
+                heap=retained_heap(profiles,artifact,config,end)
+            except Exception as error:profile_error=type(error).__name__
         result=REPORT.report(config,directory/'load.log',directory/'reconcile.log',samples,lag,after,heap)
+        result['gates'].update(complete_stage_observations=not metric_errors,
+            profile_coverage=not profiled or profile_error is None and bool(jfr_evidence))
+        result['passed']=all(result['gates'].values())
         result.update(phase=name,repeat=args.repeat,mode=args.mode,
             eligible=args.mode=='full',profiled=profiled,source_revision=TOOL.BASELINE if name=='baseline' else args.revision,
             states_before=before,states_after=after,spool_filesystem_stat=filesystem,jfr=jfr_evidence,
+            observation_errors=metric_errors,profile_error=profile_error,
             client_exit=measured_status,reconciliation_exit=reconciliation_status,
             warmup=dict(warmup_drain,client_exit=warmup_status,attempted=len(warmup_rows),
                 http_202=TOOL.value(warmup_summary,'http_202'),dropped=TOOL.value(warmup_summary,'dropped_iterations')),
             protocol_sha256=digest(ROOT/'tools/slo/workload.js'),profiles_sha256=digest(ROOT/'tools/slo/profiles.json'))
-        (artifact/'config.json').write_text(json.dumps(config,indent=2)+'\n')
         (artifact/'report.json').write_text(json.dumps(result,indent=2,sort_keys=True)+'\n')
         for name_ in ('warmup.log','warmup-reconcile.log','load.log','reconcile.log','resources.jsonl','source-lag.raw.log'):
             CAPACITY.compress(directory/name_,artifact/(name_+'.gz'))
@@ -212,6 +224,12 @@ def phase(args,name,env_file,private):
         stopped.set()
         if monitor:monitor.join(timeout=30)
         stop_probe(probe,probe_log)
+        if not (artifact/'states-after.json').exists():
+            try:
+                states=CAPACITY.container_states(compose)
+                (artifact/'states-after.json').write_text(json.dumps(states,indent=2)+'\n')
+            except Exception as error:
+                (artifact/'state-capture-error.json').write_text(json.dumps({'error_type':type(error).__name__})+'\n')
         if profiled and not (artifact/'report.json').exists() and (directory/'warmup.log').is_file():
             try:
                 for role,url in [('collector',config['collector_url']),('worker',config['worker_url'])]:
