@@ -8,13 +8,29 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 ROOT=Path(__file__).resolve().parents[1]
 def module(name):
     spec=importlib.util.spec_from_file_location(name.replace('-','_'),ROOT/'scripts'/f'{name}.py')
     m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);return m
 REPORT=module('slo-report');RELEASE=module('slo-release');TOOL=REPORT.TOOL
+RUN=module('slo-run')
 
 class SloReports(unittest.TestCase):
+    def test_warmup_drain_waits_for_unwritten_intents_even_when_disk_and_source_lag_are_zero(self):
+        clock=[0]
+        def sleep(seconds):clock[0]+=seconds
+        states=[dict(bufferRecords=0,appendPendingRecords=n) for n in (2,1,0,0)]
+        with patch.object(RUN.CAPACITY,'operations',side_effect=states) as observed, \
+             patch.object(RUN.REPORT.CAPACITY,'read_jsonl',return_value=[dict(available=True,lag_records=0,observed_at='1970-01-01T00:16:40+00:00')]), \
+             patch.object(RUN.time,'monotonic',side_effect=lambda:clock[0]), \
+             patch.object(RUN.time,'time',side_effect=lambda:1000+clock[0]), \
+             patch.object(RUN.time,'sleep',side_effect=sleep):
+            result=RUN.drain_warmup(['synthetic'],'synthetic-token',Path('/unused'))
+        self.assertEqual(4,observed.call_count)
+        self.assertEqual(6,result['drain_seconds'])
+        self.assertEqual(2,result['zero_lag_samples'])
+
     def fixture(self,folder):
         config=TOOL.profile('reference');config.update(duration_seconds=10,rate_per_second=10,
             run_prefix='12345678-1234-4234-8234-',tenants=2,payload_bytes=512)

@@ -4,6 +4,14 @@ Each collector volume has one process owner. Append writes a bounded checksummed
 frame, forces file contents, atomically renames it and forces the directory.
 An append completion assumes the volume is retained; it does not provide replication.
 
+Bounded `appendBatch` writes and forces each ordinary record file before sharing
+one directory synchronization across their atomic renames. It validates the whole
+batch and its count/encoded-byte budget before any write. The frame and checkpoint
+formats are unchanged. The batch byte target permits one larger valid record alone,
+preserving the configured single-record append limit. If a write fails partway through, every renamed prefix
+member remains charged and replayable; the batch caller receives an ambiguous
+failure, never a partial success receipt.
+
 Delivery checkpointing and file reclamation are separate recoverable states.
 After confirmed downstream delivery, the delivered checkpoint is forced before
 the record is removed. If unlinking fails, a later acknowledgement retries cleanup
@@ -20,8 +28,17 @@ sync reports an ambiguous failure.
 
 Shutdown waits for both disk protocols before releasing exclusive volume ownership.
 Kafka acceptance does checkpoint I/O outside its waiter monitor, then settles
-receipts under that monitor after append has registered its waiter. Successful
+receipts after the append registration lock establishes its waiters. Successful
 receipts still require Kafka acknowledgement and the durable local checkpoint.
+
+The collector queues copied append intents on one writer, bounded by both record
+count and a conservative 4 MiB byte charge, including in-progress writes. A batch
+has at most 32 intents and a 1 MiB byte target. A lone intent waits at most 2 ms
+for a peer; existing queued work drains immediately. Expiring an HTTP waiter does
+not release the queued intent's resource charge before its disk attempt finishes.
+Shutdown rejects unwritten intents and waits for the in-progress writer; it never
+deletes existing durable records. The API returns 202 only after downstream
+publication and checkpoint confirmation, not on intent admission.
 
 Tests cover quotas, concurrent append, checksums, exclusive ownership, process
 termination, restart, out-of-order acknowledgement, and a real filesystem unlink
