@@ -196,7 +196,9 @@ class CollectorContractIT {
 
   private long pendingFiles() throws Exception {
     try (var files = Files.list(work.resolve("wal"))) {
-      return files.filter(p -> p.toString().endsWith(".evt")).count();
+      return files
+          .filter(p -> p.toString().endsWith(".evt") || p.toString().endsWith(".grp"))
+          .count();
     }
   }
 

@@ -28,7 +28,7 @@ final class KafkaAcceptance implements AutoCloseable {
   private static final int BATCH_RECORDS = 32;
   private static final long BATCH_BYTES = 1_048_576;
   private static final long QUEUED_BYTES = DiskBuffer.MAX_BATCH_BYTES;
-  private static final long COALESCE_NANOS = TimeUnit.MILLISECONDS.toNanos(2);
+  private static final long COALESCE_NANOS = TimeUnit.MILLISECONDS.toNanos(10);
 
   record Confirmed(long sequence, DurableLog.Position position) {
     Confirmed {
@@ -151,9 +151,9 @@ final class KafkaAcceptance implements AutoCloseable {
     synchronized (this) {
       while (queued.isEmpty() && !closed) wait();
       if (closed) return List.of();
-      long until = System.nanoTime() + COALESCE_NANOS;
-      // Existing work drains immediately. Only a lone arrival waits briefly for a peer.
-      while (queued.size() == 1 && !closed) {
+      long until = queued.getFirst().began() + COALESCE_NANOS;
+      // Fill one small group until its absolute deadline or record bound. A backlog drains at once.
+      while (queued.size() < BATCH_RECORDS && !closed) {
         long remaining = until - System.nanoTime();
         if (remaining <= 0) break;
         TimeUnit.NANOSECONDS.timedWait(this, remaining);

@@ -21,11 +21,13 @@ collector filesystem, Kafka and PostgreSQL.
 Each private volume has one process owner enforced by a file lock. An append
 writes a bounded frame to a temporary file, synchronizes the file, atomically
 renames it and synchronizes the directory before waiting for publication.
-The collector assembles bounded append batches: every frame is individually forced
-and renamed, then one directory sync covers the batch. A failed partial batch
-keeps its renamed prefix charged and replayable while every affected HTTP outcome
-remains unconfirmed. Existing single-record files and checkpoint recovery remain
-compatible.
+The collector assembles bounded append groups. Multiple independently checked
+frames share one checksummed file, file synchronization, atomic rename and
+directory barrier. A temporary-write failure exposes no member; a renamed group
+with an ambiguous directory failure remains charged and replayable while every
+affected HTTP outcome remains unconfirmed. Existing single-record files and
+checkpoints remain readable alongside groups. Older readers require a fully
+drained volume before rollback; see [buffer recovery](buffer.md).
 
 Frames and delivered checkpoints are checksummed. Recovery validates committed
 entries, removes incomplete temporary files, and fails closed on corrupted
@@ -36,11 +38,10 @@ reclamation. A crash between Kafka acknowledgement and checkpointing can replay
 the record. A crash after checkpointing but before reclamation can leave a stale
 file, which recovery safely removes.
 
-The file-per-record design favors a small, auditable durability protocol over
-maximum write throughput. Fsync, directory updates and per-record files are
-known costs that must be measured. Pending record count and total encoded bytes
-are bounded. File metadata is cached so readiness and metric reads perform no
-disk I/O. The byte budget counts encoded records, not filesystem blocks;
+Pending record count and allocated spool data bytes are bounded. Partial group delivery
+retains its complete file charge until the last member is reclaimed. Group framing
+is included in the byte budget. File metadata is cached so readiness and metric
+reads perform no disk I/O. The byte budget counts file bytes, not filesystem blocks;
 provision volume headroom for metadata, temporary files and filesystem reserves.
 
 ## Bounded publication and checkpoint batching
