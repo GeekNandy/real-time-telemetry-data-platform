@@ -59,6 +59,10 @@ jobs:
         run: python3 scripts/test-load.py
       - name: Test capacity and profiling report contracts
         run: python3 scripts/test-capacity.py
+      - name: Verify the optional local read-only MCP adapter
+        run: |
+          ./mvnw --batch-mode --no-transfer-progress -f tools/operator-mcp/pom.xml verify
+          python3 scripts/test-operator-mcp.py
       - name: Resolve isolated real Schema Registry runtime
         run: ./mvnw --batch-mode --no-transfer-progress -f tools/schema-registry-runtime/pom.xml org.apache.maven.plugins:maven-dependency-plugin:3.9.0:build-classpath -Dmdep.outputFile=target/classpath.txt
       - name: Test real HTTP, crash recovery, Kafka, registry and PostgreSQL

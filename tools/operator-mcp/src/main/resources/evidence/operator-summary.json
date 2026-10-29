@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "kind": "bundled_synthetic_evidence",
+  "release_ready": false,
+  "measured_source": "c47b041e925ef07c291825695307f5adbb3385cb",
+  "run_url": "https://github.com/GeekNandy/real-time-telemetry-data-platform/actions/runs/40694831645",
+  "completed_phases": 14,
+  "accepted_ids_reconciled": 1232416,
+  "accepted_ids_missing_in_completed_phases": 0,
+  "status": "Fixed reference, scale, soak and burst release gates have not all passed. Later source changes require new measurements.",
+  "environment": "Synthetic workload on shared GitHub Actions runners; not NVIDIA traffic or a cloud production capacity claim.",
+  "profiles_resource": "evidence/profiles.json"
+}
