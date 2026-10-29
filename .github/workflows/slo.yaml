@@ -24,6 +24,12 @@ on:
         default: pilot
         type: choice
         options: [pilot, full]
+      pilot_profile:
+        description: Short diagnostics at 100/s or 500/s; always ineligible for sustained claims
+        required: true
+        default: reference
+        type: choice
+        options: [reference, scale]
 permissions:
   contents: read
 concurrency:
@@ -35,17 +41,20 @@ jobs:
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       mode: ${{ steps.plan.outputs.mode }}
+      pilot_profile: ${{ steps.plan.outputs.pilot_profile }}
     steps:
       - id: plan
         env:
           SLO_MODE: ${{ github.event_name == 'pull_request' && 'pilot' || inputs.mode }}
+          PILOT_PROFILE: ${{ github.event_name == 'pull_request' && 'reference' || inputs.pilot_profile }}
         run: |
           python3 - <<'PY'
           import json,os
           mode=os.environ['SLO_MODE'];assert mode in ('pilot','full')
-          cases=[{'profile':p,'repeat':r} for p in ('reference','scale') for r in (1,2,3)]+[{'profile':'soak','repeat':1},{'profile':'burst','repeat':1}] if mode=='full' else [{'profile':'reference','repeat':1}]
+          pilot=os.environ['PILOT_PROFILE'];assert pilot in ('reference','scale')
+          cases=[{'profile':p,'repeat':r} for p in ('reference','scale') for r in (1,2,3)]+[{'profile':'soak','repeat':1},{'profile':'burst','repeat':1}] if mode=='full' else [{'profile':pilot,'repeat':1}]
           with open(os.environ['GITHUB_OUTPUT'],'a') as output:
-              output.write('matrix='+json.dumps({'include':cases})+'\nmode='+mode+'\n')
+              output.write('matrix='+json.dumps({'include':cases})+'\nmode='+mode+'\npilot_profile='+pilot+'\n')
           PY
   experiment:
     needs: plan
@@ -88,7 +97,7 @@ jobs:
           pattern: slo-${{ needs.plan.outputs.mode }}-*
           path: data/slo-release
       - name: Enforce complete evidence and every tuned workload gate
-        run: python3 scripts/slo-release.py --root data/slo-release --mode '${{ needs.plan.outputs.mode }}' --output data/slo-release/release.json
+        run: python3 scripts/slo-release.py --root data/slo-release --mode '${{ needs.plan.outputs.mode }}' --pilot-profile '${{ needs.plan.outputs.pilot_profile }}' --output data/slo-release/release.json
       - name: Retain aggregate release decision
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

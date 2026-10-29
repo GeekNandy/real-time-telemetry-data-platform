@@ -69,7 +69,9 @@ def heap_guard(events,end,config):
 
 
 def report(config,load_log,reconcile_log,samples,lag,states,heap=None):
-    summary,rows=TOOL.audit(load_log,config)
+    # A scheduling discrepancy fails a release gate, but cannot discard the receipt identities
+    # needed to reconcile durable work. Counter/identity/content integrity remains mandatory.
+    summary,rows=TOOL.audit(load_log,config,require_schedule=False)
     manifest=[{key:r[key] for key in ('id','tenant_slot','http_status')} for r in rows]
     manifest.sort(key=lambda r:r['http_status']!=202)
     checked,reconciled=TOOL.reconcile_audit(reconcile_log,manifest)
@@ -77,6 +79,7 @@ def report(config,load_log,reconcile_log,samples,lag,states,heap=None):
     if len(starts)!=1:raise ValueError('Require one local measurement scenario')
     start=starts.pop();end=start+config['duration_seconds']*1000
     dropped=TOOL.value(summary,'dropped_iterations');offered=len(rows)+dropped
+    schedule_valid=abs(TOOL.offered(config)-offered)<=1
     accepted=sum(r['http_status']==202 for r in rows);valid=sum(r['receipt_valid'] for r in rows)
     visible=[r['live_visibility_ms'] for r in rows if r['live_observed']]
     live_good=sum(r['live_visible'] for r in rows)
@@ -88,6 +91,7 @@ def report(config,load_log,reconcile_log,samples,lag,states,heap=None):
     source_lag=quantiles([p['lag_records'] for p in source])
     gates={
         'complete_raw_audit':True,
+        'scheduled_offers_accounted':schedule_valid,
         'zero_contract_failures':TOOL.value(summary,'contract_failures')==0 and not any(r['contract_failure'] for r in rows),
         'all_202_reconciled':accepted>0 and TOOL.value(checked,'missing_202')==0 and TOOL.value(checked,'reconciled_202')==accepted,
         'zero_wrong_stored_content':TOOL.value(checked,'wrong_stored_content')==0,
@@ -126,12 +130,12 @@ def report(config,load_log,reconcile_log,samples,lag,states,heap=None):
         nominal_offered=TOOL.offered(config),observed_offered=offered,attempted=len(rows),dropped=dropped,
         http_outcomes=outcomes,http_202=accepted,valid_receipts=valid,acceptance_fraction=valid/offered,
         live_visibility_fraction=live_good/accepted if accepted else None,http_latency_ms=http,
-        scheduled_latency_ms=scheduled if not dropped and 'stages' not in config else None,
-        generator_delay_ms=delay if not dropped and 'stages' not in config else None,
+        scheduled_latency_ms=scheduled if schedule_valid and not dropped and 'stages' not in config else None,
+        generator_delay_ms=delay if schedule_valid and not dropped and 'stages' not in config else None,
         live_visibility_ms=quantiles(visible),resources=resource,source_lag_records=source_lag,
         reconciliation={key:TOOL.value(checked,key) for key in ('reconciled_202','missing_202','wrong_stored_content','non202_later_visible')},
         heap=heap,gates=gates,passed=all(gates.values()),
-        latency_convention='Nearest-rank quantiles recomputed from all raw attempts; scheduled time is invalid after drops or ramps')
+        latency_convention='Nearest-rank quantiles from raw attempts; live visibility starts at the actual request; scheduled time is invalid after drops, ramps or unaccounted offers')
 
 
 if __name__=='__main__':

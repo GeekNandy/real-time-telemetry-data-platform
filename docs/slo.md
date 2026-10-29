@@ -36,7 +36,9 @@ Observers must cover at least 90% of the measured window. The arrival timer may 
 Warmup is reported separately from the measured SLO window. Cold-start drops and retryable outcomes remain in its raw audit; protocol violations or lost 202 identities stop the run. Its durable backlog must drain before measurement. Every measured steady-state window still requires zero generator drops and all fixed release gates.
 
 Each accepted request is queried during load. Its visibility observation includes
-polling and network time and is an upper bound, not a database commit timestamp.
+polling and network time, starts at the actual HTTP request, and is an upper bound,
+not a database commit timestamp. A local iteration index omits dropped arrivals;
+its nominal schedule must not be used as the visibility clock under overload.
 Polling backs off from 20 ms to a 200 ms cap within the same absolute deadline, bounding query amplification during lag. A separate post-load reconciliation verifies every observed 202 and reports
 non-202/transport outcomes that become visible later. Timeouts and 503 outcomes
 remain ambiguous; they are not silently counted as lost accepted data.
@@ -52,6 +54,17 @@ Soak adds an after-GC retained-heap growth guard over its final ten minutes. Thi
 is a regression signal, not proof that every possible memory leak is absent.
 Whole collector/worker JFR profiles, batch/stage histograms, live lag, process CPU,
 working memory, cgroup limits and source/image identities accompany results.
+JFR working chunks use separate role directories on the recording volume through
+`FlightRecorderOptions=repository`; setting a destination filename alone does not
+move the working repository out of the application's bounded `/tmp` filesystem.
+Recording size/age bounds still apply. A missing profile or failed process is a
+failed release gate. Container state is captured before cleanup, including exits.
+
+Scheduling-count discrepancies retain the same one-iteration allowance and fail
+`scheduled_offers_accounted`. The harness still validates every started/completed
+audit counter and identity and runs receipt reconciliation before that decision.
+Rejected workload evidence cannot become a passing capacity claim by omitting
+its accepted-ID outcomes.
 
 The load generator uses a pinned, checksummed k6 binary with connection reuse,
 constant arrival scheduling and bounded preallocated virtual users. It runs in a
@@ -65,7 +78,10 @@ Compare the tuned source with the pinned Kafka-confirmed pre-tuning source
 the acknowledgement contract in the comparison. Profiled/unprofiled differences
 also retain host and workload variation; they are not isolated causal estimates.
 A release claim requires every fresh repetition to pass. Short pilots validate
-the harness and are ineligible for sustained/soak claims.
+the harness and are ineligible for sustained/soak claims. Pull requests run the
+30-second reference pilot. Manual pilots can select reference (100/s) or scale
+(500/s), retaining that profile's role limits and target budgets. Selecting a
+pilot never changes the complete eight-case matrix required for a full release.
 
 The protocol follows [SLO/error-budget reasoning](https://sre.google/workbook/implementing-slos/)
 and k6's [arrival-rate scheduling](https://grafana.com/docs/k6/latest/using-k6/scenarios/executors/constant-arrival-rate/)

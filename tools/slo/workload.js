@@ -159,7 +159,9 @@ function ingest() {
       if (receipt) validReceipts.add(1); else { contracts.add(1); invalid = true; }
       const value = lookup(id, slot, began + config.visibility_p99_ms);
       observed = value.observed;
-      visibility = observed ? Date.now() - nominal : null;
+      // Local iteration indices omit dropped arrivals. End-to-end visibility therefore starts
+      // at this actual request, independently of the invalid nominal clock after client drops.
+      visibility = observed ? Date.now() - began : null;
       visible = observed && visibility <= config.visibility_p99_ms;
       if (value.mismatch) { contracts.add(1); invalid = true; }
       visibleRate.add(visible);

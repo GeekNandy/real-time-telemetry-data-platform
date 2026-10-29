@@ -56,6 +56,7 @@ with initial environment, initial system properties and system-process events
 disabled. Start an isolated collector/worker experiment with an extra JVM option:
 
 ```
+-XX:FlightRecorderOptions=repository=/profiles/collector-repository
 -XX:StartFlightRecording=filename=/profiles/collector.jfr,settings=/app/profile-safe.jfc,dumponexit=true,maxsize=128m,maxage=5m
 ```
 

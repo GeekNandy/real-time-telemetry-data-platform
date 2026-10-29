@@ -48,6 +48,7 @@ class Handler(BaseHTTPRequestHandler):
         return self.reply(202, {'eventId': event_id, 'tenantId': tenant,
             'position': {'stream': 'telemetry.events.v1', 'partition': 0, 'offset': 1}})
     def do_GET(self):
+        if self.server.mode == 'visible-overload': time.sleep(.1)
         event_id = self.path.rsplit('/', 1)[-1]
         with self.server.lock:
             self.server.ports.add(self.client_address[1]); stored = self.server.rows.get(event_id)
@@ -65,7 +66,7 @@ class ClientContracts(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.k6 = Path(os.environ['SLO_K6_BINARY']) if 'SLO_K6_BINARY' in os.environ else TOOL.install(ROOT / 'data/slo-tools')
-    def run_case(self, mode, vus=4, request_timeout=1000, rate=10, reconcile=False):
+    def run_case(self, mode, vus=4, request_timeout=1000, rate=10, reconcile=False, visibility_budget=150):
         with tempfile.TemporaryDirectory(prefix='slo-client-test-') as temporary:
             folder = Path(temporary)
             peer = Peer(('127.0.0.1', 0), Handler); peer.mode = mode; peer.rows = {}
@@ -78,7 +79,7 @@ class ClientContracts(unittest.TestCase):
                     worker_url='http://127.0.0.1:' + str(peer.server_port),
                     run_prefix=str(uuid.uuid4())[:24], event_time=datetime.now(timezone.utc).isoformat(timespec='milliseconds'),
                     request_timeout_ms=request_timeout, settle_seconds=5,
-                    visibility_p99_ms=150, acceptance_p99_ms=1000, acceptance_p999_ms=1500,
+                    visibility_p99_ms=visibility_budget, acceptance_p99_ms=1000, acceptance_p999_ms=1500,
                     generator_delay_p99_ms=100)
                 TOOL.validate(config)
                 config_file = folder/'config.json'; config_file.write_text(json.dumps(config))
@@ -152,6 +153,14 @@ class ClientContracts(unittest.TestCase):
     def test_bounded_virtual_users_report_unsent_work(self):
         code, summary, _, _ = self.run_case('slow',vus=1,rate=20)
         self.assertEqual(99,code); self.assertGreater(TOOL.value(summary,'dropped_iterations'),0)
+
+    def test_live_visibility_does_not_inherit_the_nominal_clock_after_dropped_arrivals(self):
+        code, summary, rows, _ = self.run_case('visible-overload',vus=1,rate=30,visibility_budget=400)
+        self.assertEqual(99,code); self.assertGreater(TOOL.value(summary,'dropped_iterations'),0)
+        observed=[r['live_visibility_ms'] for r in rows if r['live_observed']]
+        self.assertGreater(len(observed),2)
+        self.assertLessEqual(max(observed),400)
+        self.assertTrue(any(r['scheduled_to_response_ms']>400 for r in rows))
 
     def test_reconciliation_checks_every_accepted_identity_and_full_content(self):
         first, (code, summary, rows) = self.run_case('correct', reconcile=True)

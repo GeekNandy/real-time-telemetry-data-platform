@@ -54,6 +54,16 @@ class SloReports(unittest.TestCase):
             f=self.fixture(Path(folder));r=REPORT.report(*f[:3],[],[],f[5])
             self.assertFalse(r['gates']['resources_observed']);self.assertFalse(r['gates']['source_offsets_observed'])
             f[4][0]['lag_records']=1000;r=REPORT.report(*f[:6]);self.assertFalse(r['gates']['bounded_source_lag'])
+    def test_invalid_schedule_fails_without_discarding_receipt_reconciliation(self):
+        with tempfile.TemporaryDirectory() as folder:
+            f=self.fixture(Path(folder));f[7]['metrics']['dropped_iterations']={'values':{'count':3}};f[10]()
+            with self.assertRaises(ValueError):TOOL.audit(f[1],f[0])
+            r=REPORT.report(*f[:6])
+            self.assertFalse(r['passed']);self.assertFalse(r['gates']['scheduled_offers_accounted'])
+            self.assertTrue(r['gates']['all_202_reconciled']);self.assertEqual(100,r['reconciliation']['reconciled_202'])
+            self.assertEqual(103,r['observed_offered']);self.assertIsNone(r['scheduled_latency_ms'])
+            f[7]['metrics']['audit_records']['values']['count']=99;f[10]()
+            with self.assertRaises(ValueError):TOOL.audit(f[1],f[0],require_schedule=False)
     def test_memory_cpu_oom_and_restart_are_independent_gates(self):
         with tempfile.TemporaryDirectory() as folder:
             f=self.fixture(Path(folder))
@@ -99,5 +109,20 @@ class SloReports(unittest.TestCase):
             with self.assertRaises(ValueError):RELEASE.aggregate(root,'full')
             path.write_text(json.dumps(original));(root/'soak-1/case.json').unlink()
             with self.assertRaises(ValueError):RELEASE.aggregate(root,'full')
+    def test_scale_pilot_cannot_be_released_or_substituted_for_the_complete_matrix(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);self.matrix(root)
+            # A separate root retains exactly one explicit pilot case and its actual phase files.
+            import shutil
+            pilot=root/'pilot';pilot.mkdir();shutil.move(str(root/'scale-1'),str(pilot/'scale-1'))
+            for path in (pilot/'scale-1').rglob('*.json'):
+                value=json.loads(path.read_text())
+                if path.name=='case.json':value['mode']='pilot'
+                if path.name=='report.json':value.update(mode='pilot',eligible=False)
+                path.write_text(json.dumps(value))
+            result=RELEASE.aggregate(pilot,'pilot','scale')
+            self.assertFalse(result['passed']);self.assertFalse(result['capacity_eligible'])
+            with self.assertRaises(ValueError):RELEASE.aggregate(pilot,'pilot','reference')
+            with self.assertRaises(ValueError):RELEASE.aggregate(pilot,'full','scale')
 
 if __name__=='__main__':unittest.main()
