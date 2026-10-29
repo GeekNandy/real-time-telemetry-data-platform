@@ -125,12 +125,14 @@ append/publication or release its permit prematurely. Filesystem stalls can dela
 the append itself; the protocol does not turn an uninterruptible fsync into a hard
 wall-clock bound.
 
-Append registration and confirmation share a separate lock so fast publication
-cannot overtake registration. Admissions, timeouts and close use only the short
-state monitor and do not wait for disk I/O. One removable timer per waiter is
+Append registration runs after directory synchronization and before the new entries
+become visible to the dispatcher. Fast publication cannot overtake registration,
+and an already-confirmed receipt need not wait for another append's disk I/O.
+Admissions, registration, timeouts, close and settlement use a short state monitor;
+no disk I/O or subscriber callback holds it. One removable timer per waiter is
 bounded by global admission capacity; pending intent count and bytes have separate
 bounds so timeout cannot open an unbounded disk queue. Subscriber callbacks run
-outside both locks. Recovery needs
+outside that monitor and the filesystem protocol. Recovery needs
 no HTTP waiter; the spool is independently bounded by its encoded byte and record
 budgets, and one ordered dispatcher retries its unconfirmed prefix with capped backoff.
 
