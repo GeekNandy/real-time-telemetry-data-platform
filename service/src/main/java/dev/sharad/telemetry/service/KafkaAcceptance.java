@@ -92,8 +92,11 @@ final class KafkaAcceptance implements AutoCloseable {
       throw new IllegalArgumentException("Invalid confirmation batch");
     confirmed = List.copyOf(confirmed);
     var settled = new ArrayList<Map.Entry<Waiter, DurableLog.Position>>();
+    // No acceptance monitor during disk I/O: append holds it until registration, while the spool
+    // independently serializes checkpoints. Settling under the monitor afterwards still prevents
+    // a fast dispatcher from completing before its append has registered the waiter.
+    buffer.acknowledgeBatch(confirmed.stream().map(Confirmed::sequence).toList());
     synchronized (this) {
-      buffer.acknowledgeBatch(confirmed.stream().map(Confirmed::sequence).toList());
       for (var item : confirmed) {
         Waiter waiter = waiting.remove(item.sequence());
         if (waiter != null) {
