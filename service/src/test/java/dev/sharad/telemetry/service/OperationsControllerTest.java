@@ -78,6 +78,12 @@ class OperationsControllerTest {
     Gauge.builder("telemetry.buffer.records", () -> 3.0).strongReference(true).register(meters);
     Gauge.builder("telemetry.buffer.bytes", () -> 1024.0).strongReference(true).register(meters);
     Gauge.builder("telemetry.buffer.oldest.age", () -> 2.5).strongReference(true).register(meters);
+    Gauge.builder("telemetry.spool.pending.writes", () -> 5.0)
+        .strongReference(true)
+        .register(meters);
+    Gauge.builder("telemetry.spool.pending.bytes", () -> 2048.0)
+        .strongReference(true)
+        .register(meters);
     meters.counter("tenant-secret", "event-id", "private-event").increment();
     observe()
         .exchange()
@@ -96,6 +102,10 @@ class OperationsControllerTest {
         .isEqualTo(1024.0)
         .jsonPath("$.oldestBufferedAgeSeconds")
         .isEqualTo(2.5)
+        .jsonPath("$.appendPendingRecords")
+        .isEqualTo(5.0)
+        .jsonPath("$.appendPendingBytes")
+        .isEqualTo(2048.0)
         .jsonPath("$.instanceId")
         .isNotEmpty()
         .consumeWith(

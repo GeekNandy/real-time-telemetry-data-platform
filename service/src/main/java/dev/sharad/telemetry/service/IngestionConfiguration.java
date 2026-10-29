@@ -57,7 +57,8 @@ public class IngestionConfiguration {
       @Value("${telemetry.acceptance-deadline-ms}") long deadline,
       MeterRegistry metrics) {
     var acceptance =
-        new KafkaAcceptance(buffer, settings.globalCapacity(), Duration.ofMillis(deadline));
+        new KafkaAcceptance(
+            buffer, settings.globalCapacity(), Duration.ofMillis(deadline), metrics);
     metrics.gauge("telemetry.ingestion.waiting", acceptance, KafkaAcceptance::pendingWaiters);
     return acceptance;
   }
@@ -76,7 +77,7 @@ public class IngestionConfiguration {
             .register(metrics);
     var spooling =
         Timer.builder("telemetry.append.phase.duration")
-            .tag("phase", "spool_registration")
+            .tag("phase", "spool_enqueue")
             .publishPercentileHistogram()
             .register(metrics);
     var engine =

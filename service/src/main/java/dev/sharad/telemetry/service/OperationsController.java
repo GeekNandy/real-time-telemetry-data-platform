@@ -73,6 +73,8 @@ public class OperationsController {
         gauge("telemetry.buffer.records"),
         gauge("telemetry.buffer.bytes"),
         gauge("telemetry.buffer.oldest.age"),
+        gauge("telemetry.spool.pending.writes"),
+        gauge("telemetry.spool.pending.bytes"),
         Map.copyOf(stages));
   }
 
@@ -95,5 +97,7 @@ public class OperationsController {
       Double bufferRecords,
       Double bufferBytes,
       Double oldestBufferedAgeSeconds,
+      Double appendPendingRecords,
+      Double appendPendingBytes,
       Map<String, StageSnapshot> stages) {}
 }

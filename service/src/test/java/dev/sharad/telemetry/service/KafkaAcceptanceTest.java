@@ -28,15 +28,26 @@ class KafkaAcceptanceTest {
     return new DiskBuffer(directory, new PlatformSettings.Buffer(1_048_576, 128, 1024));
   }
 
+  private static DiskBuffer.Entry awaitHead(DiskBuffer buffer) throws Exception {
+    await().atMost(Duration.ofSeconds(5)).until(() -> buffer.peek().isPresent());
+    return buffer.peek().orElseThrow();
+  }
+
+  private static void awaitRecords(DiskBuffer buffer, int records) {
+    await()
+        .atMost(Duration.ofSeconds(5))
+        .untilAsserted(() -> assertEquals(records, buffer.snapshot().records()));
+  }
+
   @Test
   void requiresPublicationAndDurableCheckpointBeforeCompleting() throws Exception {
     try (var buffer = buffer();
         var acceptance = new KafkaAcceptance(buffer, 2, Duration.ofSeconds(5))) {
       var result =
           acceptance.append("tenant:event", new byte[] {1}, Map.of()).toCompletableFuture();
-      var entry = buffer.peek().orElseThrow();
+      var entry = awaitHead(buffer);
       assertFalse(result.isDone());
-      assertEquals(1, buffer.snapshot().records());
+      awaitRecords(buffer, 1);
       acceptance.confirm(entry.sequence(), POSITION);
       assertEquals(POSITION, result.get(1, TimeUnit.SECONDS));
       assertEquals(entry.sequence(), buffer.snapshot().deliveredSequence());
@@ -55,16 +66,16 @@ class KafkaAcceptanceTest {
       var error = assertThrows(ExecutionException.class, () -> result.get(5, TimeUnit.SECONDS));
       assertInstanceOf(TimeoutException.class, error.getCause());
       assertEquals(0, acceptance.pendingWaiters());
-      assertEquals(1, buffer.snapshot().records());
+      awaitRecords(buffer, 1);
       var second =
           acceptance.append("tenant:second", new byte[] {2}, Map.of()).toCompletableFuture();
       var secondError =
           assertThrows(ExecutionException.class, () -> second.get(5, TimeUnit.SECONDS));
       assertInstanceOf(TimeoutException.class, secondError.getCause());
       assertEquals(0, acceptance.pendingWaiters());
-      assertEquals(2, buffer.snapshot().records());
-      acceptance.confirm(buffer.peek().orElseThrow().sequence(), POSITION);
-      acceptance.confirm(buffer.peek().orElseThrow().sequence(), POSITION);
+      awaitRecords(buffer, 2);
+      acceptance.confirm(awaitHead(buffer).sequence(), POSITION);
+      acceptance.confirm(awaitHead(buffer).sequence(), POSITION);
       assertTrue(result.isCompletedExceptionally());
       assertTrue(second.isCompletedExceptionally());
       assertEquals(0, buffer.snapshot().records());
@@ -78,8 +89,8 @@ class KafkaAcceptanceTest {
       var stage = acceptance.append("tenant:event", new byte[] {1}, Map.of());
       assertTrue(stage.toCompletableFuture().cancel(true));
       assertEquals(1, acceptance.pendingWaiters());
-      assertEquals(1, buffer.snapshot().records());
-      acceptance.confirm(buffer.peek().orElseThrow().sequence(), POSITION);
+      awaitRecords(buffer, 1);
+      acceptance.confirm(awaitHead(buffer).sequence(), POSITION);
       assertEquals(POSITION, stage.toCompletableFuture().get(1, TimeUnit.SECONDS));
     }
   }
@@ -94,7 +105,7 @@ class KafkaAcceptanceTest {
           () -> acceptance.append("tenant:excess", new byte[] {2}, Map.of()));
       assertEquals(1, acceptance.pendingWaiters());
       assertEquals(1, acceptance.scheduledWaiters());
-      assertEquals(1, buffer.snapshot().records());
+      awaitRecords(buffer, 1);
     }
   }
 
@@ -104,11 +115,11 @@ class KafkaAcceptanceTest {
         var acceptance = new KafkaAcceptance(buffer, 1, Duration.ofSeconds(5))) {
       var result =
           acceptance.append("tenant:event", new byte[] {1}, Map.of()).toCompletableFuture();
-      long sequence = buffer.peek().orElseThrow().sequence();
+      long sequence = awaitHead(buffer).sequence();
       Files.createDirectory(directory.resolve("checkpoint"));
       assertThrows(IOException.class, () -> acceptance.confirm(sequence, POSITION));
       assertFalse(result.isDone());
-      assertEquals(1, buffer.snapshot().records());
+      awaitRecords(buffer, 1);
       Files.delete(directory.resolve("checkpoint"));
       acceptance.confirm(sequence, POSITION);
       assertEquals(POSITION, result.get(1, TimeUnit.SECONDS));
@@ -122,7 +133,7 @@ class KafkaAcceptanceTest {
     }
     try (var buffer = buffer();
         var acceptance = new KafkaAcceptance(buffer, 1, Duration.ofSeconds(5))) {
-      acceptance.confirm(buffer.peek().orElseThrow().sequence(), POSITION);
+      acceptance.confirm(awaitHead(buffer).sequence(), POSITION);
       assertEquals(0, buffer.snapshot().records());
       assertEquals(0, acceptance.pendingWaiters());
     }
@@ -134,9 +145,10 @@ class KafkaAcceptanceTest {
       var acceptance = new KafkaAcceptance(buffer, 1, Duration.ofSeconds(5));
       var result =
           acceptance.append("tenant:event", new byte[] {1}, Map.of()).toCompletableFuture();
+      awaitRecords(buffer, 1);
       acceptance.close();
       assertThrows(ExecutionException.class, () -> result.get(1, TimeUnit.SECONDS));
-      assertEquals(1, buffer.snapshot().records());
+      awaitRecords(buffer, 1);
       assertEquals(0, acceptance.pendingWaiters());
       assertEquals(0, acceptance.scheduledWaiters());
       assertThrows(
@@ -150,6 +162,7 @@ class KafkaAcceptanceTest {
         var acceptance = new KafkaAcceptance(buffer, 4, Duration.ofSeconds(30))) {
       var first = acceptance.append("tenant:one", new byte[] {1}, Map.of()).toCompletableFuture();
       var second = acceptance.append("tenant:two", new byte[] {2}, Map.of()).toCompletableFuture();
+      awaitRecords(buffer, 2);
       var confirmations =
           List.of(
               new KafkaAcceptance.Confirmed(1, POSITION),
@@ -174,6 +187,7 @@ class KafkaAcceptanceTest {
         var acceptance = new KafkaAcceptance(buffer, 4, Duration.ofSeconds(30))) {
       var first = acceptance.append("tenant:one", new byte[] {1}, Map.of()).toCompletableFuture();
       var second = acceptance.append("tenant:two", new byte[] {2}, Map.of()).toCompletableFuture();
+      awaitRecords(buffer, 2);
       assertThrows(
           IllegalArgumentException.class,
           () -> acceptance.confirmBatch(List.of(new KafkaAcceptance.Confirmed(2, POSITION))));
@@ -195,7 +209,7 @@ class KafkaAcceptanceTest {
               () -> {
                 for (int count = 0; count < 80; count++) {
                   await().atMost(Duration.ofSeconds(5)).until(() -> buffer.peek().isPresent());
-                  acceptance.confirm(buffer.peek().orElseThrow().sequence(), POSITION);
+                  acceptance.confirm(awaitHead(buffer).sequence(), POSITION);
                 }
                 return null;
               });

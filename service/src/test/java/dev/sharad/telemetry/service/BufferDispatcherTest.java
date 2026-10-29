@@ -1,5 +1,6 @@
 package dev.sharad.telemetry.service;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 
 import dev.sharad.telemetry.buffer.DiskBuffer;
@@ -61,6 +62,9 @@ class BufferDispatcherTest {
             acceptance
                 .append("tenant:" + id, new byte[] {(byte) id}, Map.of())
                 .toCompletableFuture());
+      await()
+          .atMost(Duration.ofSeconds(5))
+          .untilAsserted(() -> assertEquals(count, buffer.snapshot().records()));
       return results;
     }
 

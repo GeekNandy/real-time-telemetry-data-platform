@@ -110,6 +110,26 @@ public final class DiskBuffer implements AutoCloseable {
       long deliveredSequence,
       long oldestAgeMillis) {}
 
+  /**
+   * A defensively copied append intent; a batch still keeps the existing file-per-record format.
+   */
+  public record Append(String key, byte[] payload, Map<String, String> traceHeaders) {
+    public Append {
+      if (key == null || key.length() > 256 || key.isBlank() || payload == null)
+        throw new IllegalArgumentException("Invalid buffered record");
+      validateTraceHeaders(traceHeaders);
+      payload = payload.clone();
+      traceHeaders = Map.copyOf(traceHeaders);
+    }
+
+    @Override
+    public byte[] payload() {
+      return payload.clone();
+    }
+  }
+
+  private record Prepared(Entry entry, byte[] frame, Path temporary, Path committed) {}
+
   public DiskBuffer(Path directory, PlatformSettings.Buffer limits) throws IOException {
     this(directory, limits, FILESYSTEM);
   }
@@ -147,48 +167,99 @@ public final class DiskBuffer implements AutoCloseable {
 
   public Entry append(String key, byte[] payload, Map<String, String> traceHeaders)
       throws IOException {
-    if (key == null || key.length() > 256 || key.isBlank() || payload == null) {
-      throw new IllegalArgumentException("Invalid buffered record");
-    }
-    validateTraceHeaders(traceHeaders);
-    if (payload.length > limits.maxRecordBytes())
-      throw new IllegalArgumentException("Payload exceeds record limit");
+    return appendBatch(List.of(new Append(key, payload, traceHeaders))).getFirst();
+  }
+
+  /**
+   * Force every file, then share the rename-directory durability barrier across a bounded batch.
+   */
+  public List<Entry> appendBatch(List<Append> records) throws IOException {
+    return appendBatch(records, entries -> {});
+  }
+
+  /**
+   * Register waiters after synchronization but before dispatcher visibility; no subscriber calls.
+   */
+  public List<Entry> appendBatch(
+      List<Append> records, java.util.function.Consumer<List<Entry>> beforeVisible)
+      throws IOException {
+    java.util.Objects.requireNonNull(beforeVisible);
+    if (records == null || records.isEmpty() || records.size() > MAX_BATCH_RECORDS)
+      throw new IllegalArgumentException("Invalid append batch");
+    records = List.copyOf(records);
     synchronized (appendLock) {
       long sequence;
       synchronized (this) {
         requireOpen();
         sequence = nextSequence;
       }
-      Instant created = Instant.now();
-      byte[] frame = encode(sequence, created, key, payload, traceHeaders);
-      if (frame.length > limits.maxRecordBytes())
-        throw new IllegalArgumentException("Frame exceeds record limit");
+      var prepared = new ArrayList<Prepared>();
+      long bytes = 0;
+      for (var record : records) {
+        if (record.payload.length > limits.maxRecordBytes())
+          throw new IllegalArgumentException("Payload exceeds record limit");
+        var entry =
+            new Entry(sequence++, Instant.now(), record.key, record.payload, record.traceHeaders);
+        byte[] frame =
+            encode(
+                entry.sequence(),
+                entry.createdAt(),
+                entry.key(),
+                entry.payload,
+                entry.traceHeaders());
+        if (frame.length > limits.maxRecordBytes()
+            || records.size() > 1 && frame.length > MAX_BATCH_BYTES - bytes)
+          throw new IllegalArgumentException("Frame or append batch exceeds the byte limit");
+        bytes += frame.length;
+        prepared.add(
+            new Prepared(
+                entry,
+                frame,
+                directory.resolve(String.format("%020d.tmp", entry.sequence())),
+                directory.resolve(String.format("%020d.evt", entry.sequence()))));
+      }
       synchronized (this) {
-        if (pending.size() >= limits.maxRecords() || frame.length > limits.maxBytes() - usedBytes)
-          throw new Full();
+        if (prepared.size() > limits.maxRecords() - pending.size()
+            || bytes > limits.maxBytes() - usedBytes) throw new Full();
       }
       // Only this appender can consume budget; concurrent checkpoints can only release it.
-      Path temporary = directory.resolve(String.format("%020d.tmp", sequence));
-      Path committed = directory.resolve(String.format("%020d.evt", sequence));
+      var committed = new ArrayList<Prepared>();
+      boolean allWritten = false;
       try {
-        durability.writeForced(temporary, frame);
-        Files.move(temporary, committed, StandardCopyOption.ATOMIC_MOVE);
-        try {
-          durability.forceDirectory(directory);
-        } finally {
-          // A renamed file consumes budget even when directory sync fails and the append outcome
-          // is ambiguous. It becomes visible only after that sync attempt finishes.
-          synchronized (this) {
-            pending.put(sequence, new Pending(committed, created, frame.length));
-            usedBytes += frame.length;
-            nextSequence++;
-            notifyAll();
-          }
+        for (var item : prepared) {
+          durability.writeForced(item.temporary(), item.frame());
+          Files.move(item.temporary(), item.committed(), StandardCopyOption.ATOMIC_MOVE);
+          committed.add(item);
         }
-        return new Entry(sequence, created, key, payload, traceHeaders);
+        allWritten = true;
       } finally {
-        Files.deleteIfExists(temporary);
+        try {
+          if (!committed.isEmpty()) {
+            try {
+              durability.forceDirectory(directory);
+              if (allWritten)
+                beforeVisible.accept(committed.stream().map(Prepared::entry).toList());
+            } finally {
+              // A partial write or failed directory sync has ambiguous client outcomes. Charge
+              // every renamed file and expose that prefix only after its sync attempt finishes.
+              synchronized (this) {
+                for (var item : committed) {
+                  var entry = item.entry();
+                  pending.put(
+                      entry.sequence(),
+                      new Pending(item.committed(), entry.createdAt(), item.frame().length));
+                  usedBytes += item.frame().length;
+                  nextSequence = entry.sequence() + 1;
+                }
+                notifyAll();
+              }
+            }
+          }
+        } finally {
+          for (var item : prepared) Files.deleteIfExists(item.temporary());
+        }
       }
+      return prepared.stream().map(Prepared::entry).toList();
     }
   }
 
@@ -334,6 +405,17 @@ public final class DiskBuffer implements AutoCloseable {
     }
     return new Snapshot(
         pending.size(), usedBytes, limits.maxBytes(), limits.maxRecords(), deliveredSequence, age);
+  }
+
+  public int maxRecordBytes() {
+    return limits.maxRecordBytes();
+  }
+
+  public void validateAppend(Append record) throws IOException {
+    if (record.payload.length > limits.maxRecordBytes()
+        || encode(1, Instant.EPOCH, record.key, record.payload, record.traceHeaders).length
+            > limits.maxRecordBytes())
+      throw new IllegalArgumentException("Frame exceeds record limit");
   }
 
   private void recover() throws IOException {

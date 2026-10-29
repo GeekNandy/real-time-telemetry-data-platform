@@ -21,6 +21,11 @@ collector filesystem, Kafka and PostgreSQL.
 Each private volume has one process owner enforced by a file lock. An append
 writes a bounded frame to a temporary file, synchronizes the file, atomically
 renames it and synchronizes the directory before waiting for publication.
+The collector assembles bounded append batches: every frame is individually forced
+and renamed, then one directory sync covers the batch. A failed partial batch
+keeps its renamed prefix charged and replayable while every affected HTTP outcome
+remains unconfirmed. Existing single-record files and checkpoint recovery remain
+compatible.
 
 Frames and delivered checkpoints are checksummed. Recovery validates committed
 entries, removes incomplete temporary files, and fails closed on corrupted
@@ -47,7 +52,7 @@ It sends that complete window in volume order before waiting for producer
 acknowledgements. Kafka idempotence and at most five in-flight requests preserve
 per-partition producer order; downstream identity/fingerprint checks handle replay.
 A two-millisecond coalescing interval bounds assembly delay. A notified dispatcher
-replaces the former periodic empty-queue poll.
+waits efficiently while the spool is empty.
 
 Only after **every** record in the prefix has a successful producer receipt does
 one synchronized delivered checkpoint advance through that prefix. Every waiting
@@ -62,11 +67,16 @@ shared publication deadline (default ten seconds). This deadline includes sends
 and waits; Kafka's own bounded metadata/buffer allocation and filesystem calls can
 overrun it. It does not extend the separate HTTP acknowledgement deadline.
 
-Bounded-label histograms distinguish append encoding, spool/registration wait,
+Bounded-label histograms distinguish append encoding, intent enqueue time,
 spool batch reads, batch publication and batch checkpoint time. These are operation
 measurements; overlapping batch and per-request intervals are not additive stage
 latencies. Batch-size observations and source/load identities accompany workload
 experiments. No throughput improvement is inferred merely from the implementation.
+`telemetry.spool.append.duration` includes intent queue time and its complete file/
+directory synchronization attempt; `telemetry.spool.append.batch.size` records
+the physical append batch. Pending intent count and byte gauges include writes
+currently performing I/O and remain charged after HTTP timeout until that attempt
+finishes. Warmup drain requires both the intent queue and durable backlog empty.
 
 ## Explicit failure assumptions
 
@@ -105,8 +115,9 @@ Deduplication is bounded by retention of the stored identity/fingerprint.
 ## Admission and the Java Memory Model
 
 One monitor atomically updates global and tenant occupancy. Only active tenants
-are retained. A bounded executor isolates filesystem work from the event loop;
-queued work has a start deadline. A separate acknowledgement deadline defaults to
+are retained. The bounded ingestion executor encodes and admits intents; one bounded
+spool writer isolates filesystem work from the event loop. Work has a start deadline
+and global/per-tenant admission budgets. A separate acknowledgement deadline defaults to
 five seconds from spool append start. Timeout settles only the bounded response
 waiter; it never deletes durable work. Admission stays occupied until confirmation
 or that deadline. Cancellation of an HTTP subscriber cannot cancel the underlying
@@ -114,9 +125,14 @@ append/publication or release its permit prematurely. Filesystem stalls can dela
 the append itself; the protocol does not turn an uninterruptible fsync into a hard
 wall-clock bound.
 
-Waiter registration and checkpoint confirmation share a monitor so fast publication
-cannot overtake registration. One removable timer per waiter is bounded by global
-admission capacity. Subscriber callbacks run outside that monitor. Recovery needs
+Append registration runs after directory synchronization and before the new entries
+become visible to the dispatcher. Fast publication cannot overtake registration,
+and an already-confirmed receipt need not wait for another append's disk I/O.
+Admissions, registration, timeouts, close and settlement use a short state monitor;
+no disk I/O or subscriber callback holds it. One removable timer per waiter is
+bounded by global admission capacity; pending intent count and bytes have separate
+bounds so timeout cannot open an unbounded disk queue. Subscriber callbacks run
+outside that monitor and the filesystem protocol. Recovery needs
 no HTTP waiter; the spool is independently bounded by its encoded byte and record
 budgets, and one ordered dispatcher retries its unconfirmed prefix with capped backoff.
 

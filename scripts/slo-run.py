@@ -40,7 +40,7 @@ def metrics(token,url,path):
     with urllib.request.urlopen(request,timeout=3) as response:
         body=response.read(2097153)
         if len(body)>2097152:raise ValueError('Metrics response exceeds the bound')
-    lines=[line for line in body.decode().splitlines() if line.startswith(('telemetry_append_phase_','telemetry_dispatch_','telemetry_persistence_batch_'))]
+    lines=[line for line in body.decode().splitlines() if line.startswith(('telemetry_append_phase_','telemetry_spool_','telemetry_dispatch_','telemetry_persistence_batch_'))]
     path.write_text('\n'.join(lines)+'\n')
 
 
@@ -104,7 +104,7 @@ def drain_warmup(compose,token,directory):
         samples=REPORT.CAPACITY.read_jsonl(directory/'source-lag.raw.log')
         last=samples[-1] if samples else {}
         fresh=last.get('available') and time.time()*1000-REPORT.millis(last['observed_at'])<10000
-        if observed and observed.get('bufferRecords')==0 and fresh and last['lag_records']==0:stable+=1
+        if observed and observed.get('bufferRecords')==0 and observed.get('appendPendingRecords',0)==0 and fresh and last['lag_records']==0:stable+=1
         else:stable=0
         if stable>=2:return {'drain_seconds':round(time.monotonic()-started,3),'zero_lag_samples':stable}
         time.sleep(2)
