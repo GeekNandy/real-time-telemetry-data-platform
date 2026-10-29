@@ -62,6 +62,11 @@ event through the actual pipeline. The overview shows live aggregate metrics;
 Grafana dashboards are provisioned automatically on port 3000. See the console
 guide for local credentials, scope boundaries and browser verification.
 
+An optional [read-only MCP operator](docs/operator-mcp.md) exposes health,
+aggregate metrics, bundled event schemas and benchmark evidence to local MCP
+clients. It uses the existing API permissions and runs as a separate stdio
+process, without adding a hosted service.
+
 The Compose stack binds host ports to loopback and uses generated demo credentials. The [Helm deployment](deploy/helm/telemetry/README.md) uses independent collector and worker workloads, retained collector PVCs, non-root execution and explicit network policy. `./scripts/kind-smoke.sh` builds the image, reconciles twenty accepted IDs and restarts the collector. This is a correctness smoke, not a capacity result.
 
 The [AWS reference](infra/aws/README.md) provides private EKS, encrypted storage and ECR configuration. Validation and mocked policy tests do not establish a real AWS deployment or high availability.
