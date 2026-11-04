@@ -74,7 +74,7 @@ down. It then restarts the controller. Its cleanup removes only the
 randomly named smoke project volumes and temporary credentials.
 
 ```bash
-./scripts/kraft-quorum-smoke.sh
+bash scripts/kraft-quorum-smoke.sh
 ```
 
 Reports are written under ignored `data/kraft-quorum-smoke/` by default,
