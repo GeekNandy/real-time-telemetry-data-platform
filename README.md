@@ -69,6 +69,8 @@ process, without adding a hosted service.
 
 The Compose stack binds host ports to loopback and uses generated demo credentials. The [Helm deployment](deploy/helm/telemetry/README.md) uses independent collector and worker workloads, retained collector PVCs, non-root execution and explicit network policy. `./scripts/kind-smoke.sh` builds the image, reconciles twenty accepted IDs and restarts the collector. This is a correctness smoke, not a capacity result.
 
+For an isolated metadata-controller failover experiment, the optional [three-controller KRaft reference](docs/kraft-quorum.md) extends the three-broker Compose stack without adding a custom Raft server or replacing the default demo. This is a single-host correctness exercise, not multi-AZ HA evidence.
+
 The [AWS reference](infra/aws/README.md) provides private EKS, encrypted storage and ECR configuration. Validation and mocked policy tests do not establish a real AWS deployment or high availability.
 
 ## Performance and verification
