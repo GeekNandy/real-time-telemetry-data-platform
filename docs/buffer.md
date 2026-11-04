@@ -53,6 +53,17 @@ Shutdown rejects unwritten intents and waits for the in-progress writer; it neve
 deletes existing durable records. The API returns 202 only after downstream
 publication and checkpoint confirmation, not on intent admission.
 
+For diagnosis, `telemetry.spool.queue.duration` samples every admitted intent from
+its submission until its append batch starts persistence (including coalescing and
+writer backlog). `telemetry.spool.write.duration` samples each attempted durable
+write batch, including encoding, filesystem operations and waiter registration.
+`telemetry.spool.append.duration` retains its original per-intent queue-plus-write
+measurement for historical comparisons. Timings include failed attempts, use fixed
+metric names without per-event labels and are not a complete HTTP 202 latency
+breakdown. Compare them with dispatch publication/checkpoint measurements and the
+scheduled request latency under the same workload; write-batch samples and per-intent
+samples have different denominators.
+
 Tests cover quotas, concurrent append, checksums, exclusive ownership, process
 termination, restart, out-of-order acknowledgement, and a real filesystem unlink
 failure after checkpointing. The latter must recover without restarting the process.
