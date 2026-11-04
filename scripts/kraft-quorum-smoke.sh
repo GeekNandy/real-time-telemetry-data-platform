@@ -100,22 +100,47 @@ wait_for_leader() {
   return 1
 }
 
-verify_receipts() {
-  local phase="$1"
-  python3 scripts/load.py --rate 5 --duration 4 --token-file "$scratch/token" \
-    --output "$reports/$phase"
-  python3 - "$reports/$phase/summary.json" <<'PY_RECEIPTS'
+assert_receipts() {
+  python3 - "$1" "$2" <<'PY_RECEIPTS'
 from pathlib import Path
 import json
 import sys
 summary = json.loads(Path(sys.argv[1]).read_text())
-assert summary["scheduled"] == 20, summary
-assert summary["outcomes"] == {"202": 20}, summary["outcomes"]
-assert summary["accepted_reconciliation"]["passed"], summary["accepted_reconciliation"]
-assert summary["accepted_reconciliation"]["visible"] == 20, summary["accepted_reconciliation"]
+expected = int(sys.argv[2])
+assert summary["scheduled"] == expected, summary
+assert summary["outcomes"] == {"202": expected}, summary["outcomes"]
+assert summary["accepted_reconciliation"] == {
+    "accepted": expected, "visible": expected, "unresolved_ids": [], "passed": True,
+}, summary["accepted_reconciliation"]
 PY_RECEIPTS
 }
 
+warm_up() {
+  # HTTP readiness checks admin/topic policy, not the first producer/WAL/query path.
+  # Keep cold-start probes separate from both strict, unretried measured cohorts.
+  local attempt output
+  for attempt in $(seq 1 6); do
+    output="$reports/warmup/attempt-$attempt"
+    echo "End-to-end ingestion warm-up attempt $attempt of 6"
+    if python3 scripts/load.py --rate 1 --duration 1 --concurrency 1 \
+      --timeout 10 --settle 10 --token-file "$scratch/token" --output "$output" &&
+      assert_receipts "$output/summary.json" 1; then
+      return 0
+    fi
+    sleep 2
+  done
+  echo 'Ingestion did not confirm an HTTP 202 receipt and matching query during warm-up' >&2
+  return 1
+}
+
+verify_receipts() {
+  local phase="$1"
+  python3 scripts/load.py --rate 5 --duration 4 --token-file "$scratch/token" \
+    --output "$reports/$phase"
+  assert_receipts "$reports/$phase/summary.json" 20
+}
+
+warm_up
 wait_for_leader > "$reports/quorum-before.txt"
 old_leader="$(leader_from_status < "$reports/quorum-before.txt")"
 verify_receipts before-failure

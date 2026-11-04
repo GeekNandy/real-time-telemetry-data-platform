@@ -67,11 +67,19 @@ python3 scripts/test-kraft-quorum.py
 ```
 
 With Docker available, the isolated smoke uses fresh synthetic credentials and
-volumes, measures a small pre-failure accepted-ID cohort, force-stops the
+volumes. After HTTP readiness, it warms the first producer, durable checkpoint
+and worker query path with up to six single-event probes. Each probe must confirm
+an HTTP 202 receipt and a matching query; a timed-out event that later becomes
+visible is insufficient. Warm-up attempts have bounded request and settle times
+and retain separate reports under `warmup/`.
+
+The smoke then measures a small pre-failure accepted-ID cohort, force-stops the
 **currently elected** metadata controller, verifies a **different** leader is
 elected, and reconciles another accepted-ID cohort while one controller remains
 down. It then restarts the controller. Its cleanup removes only the
 randomly named smoke project volumes and temporary credentials.
+Both measured cohorts still require all 20 events to receive matching HTTP 202
+receipts and become queryable; neither cohort retries failed requests.
 
 ```bash
 bash scripts/kraft-quorum-smoke.sh
