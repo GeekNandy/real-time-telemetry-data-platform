@@ -1,5 +1,12 @@
 name: KRaft quorum failover exercise
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - compose.kraft-quorum.yaml
+      - scripts/kraft-quorum-smoke.sh
+      - scripts/test-kraft-quorum.py
+      - .github/workflows/kraft-quorum.yaml
   workflow_dispatch:
 permissions:
   contents: read
