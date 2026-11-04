@@ -79,6 +79,8 @@ sys.exit(0 if len(parts) == 3 and all(
   fi
 done
 
+"${compose[@]}" up -d --no-deps --wait --wait-timeout 180 registry
+
 # A GET /subjects healthcheck can pass before the registry's Kafka-backed store
 # confirms writes. Bootstrap idempotently before starting read-only app roles.
 schema_ready=false
