@@ -7,7 +7,7 @@ project="telemetry-kraft-smoke-$RANDOM-$RANDOM"
 reports="${TELEMETRY_KRAFT_REPORTS:-data/kraft-quorum-smoke}"
 scratch="$(mktemp -d)"
 mkdir -p "$reports"
-compose=(docker compose -p "$project" -f compose.yaml -f compose.replicated.yaml -f compose.kraft-quorum.yaml --env-file "$scratch/env")
+compose=(docker compose -p "$project" -f compose.yaml -f compose.replicated.yaml -f compose.kraft-quorum.yaml -f "$scratch/runtime.yaml" --env-file "$scratch/env")
 
 cleanup() {
   if [[ -f "$scratch/env" ]]; then
@@ -30,6 +30,15 @@ settings.write_text(
     "DATABASE_PASSWORD=" + secrets.token_hex(24) + "\n"
 )
 settings.chmod(0o600)
+(directory / "runtime.yaml").write_text(
+    'services:\n'
+    '  collector:\n'
+    '    environment:\n'
+    '      SCHEMA_REGISTRATION_ALLOWED: "false"\n'
+    '  worker:\n'
+    '    environment:\n'
+    '      SCHEMA_REGISTRATION_ALLOWED: "false"\n'
+)
 PY_SECRETS
 
 # The -p project name gives every controller and broker a fresh, isolated volume.
@@ -69,6 +78,23 @@ sys.exit(0 if len(parts) == 3 and all(
     exit 1
   fi
 done
+
+# A GET /subjects healthcheck can pass before the registry's Kafka-backed store
+# confirms writes. Bootstrap idempotently before starting read-only app roles.
+schema_ready=false
+for attempt in $(seq 1 6); do
+  if python3 scripts/schema-bootstrap.py --registry-url http://127.0.0.1:8081 \
+    --allow-local-http > "$reports/schema-bootstrap-$attempt.log" 2>&1; then
+    schema_ready=true
+    break
+  fi
+  echo "Schema Registry bootstrap attempt $attempt of 6 did not complete; retrying"
+  sleep 2
+done
+if [[ "$schema_ready" != true ]]; then
+  echo 'Schema Registry bootstrap did not complete; inspect schema-bootstrap reports' >&2
+  exit 1
+fi
 "${compose[@]}" up -d collector worker
 python3 scripts/wait-ready.py
 python3 scripts/demo-token.py --env-file "$scratch/env" --tenant kraft-smoke --console > "$scratch/token"

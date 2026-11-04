@@ -67,7 +67,12 @@ python3 scripts/test-kraft-quorum.py
 ```
 
 With Docker available, the isolated smoke uses fresh synthetic credentials and
-volumes. After HTTP readiness, it warms the first producer, durable checkpoint
+volumes. It first runs the existing schema bootstrap with bounded retries, since
+the registry's HTTP health endpoint can respond before its Kafka-backed store
+confirms writes. A temporary smoke-only Compose override then gives the collector
+and worker read-only registry access; it leaves the demo defaults unchanged.
+
+After HTTP readiness, it warms the first producer, durable checkpoint
 and worker query path with up to six single-event probes. Each probe must confirm
 an HTTP 202 receipt and a matching query; a timed-out event that later becomes
 visible is insufficient. Warm-up attempts have bounded request and settle times
