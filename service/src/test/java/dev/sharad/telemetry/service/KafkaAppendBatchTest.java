@@ -103,18 +103,10 @@ class KafkaAppendBatchTest {
                 assertEquals(33, meters.get("telemetry.spool.append.duration").timer().count());
                 // One durable-write sample per batch, not per record.
                 assertEquals(2, meters.get("telemetry.spool.write.duration").timer().count());
-                assertTrue(
-                    meters
-                            .get("telemetry.spool.queue.duration")
-                            .timer()
-                            .totalTime(TimeUnit.NANOSECONDS)
-                        > 0);
-                assertTrue(
-                    meters
-                            .get("telemetry.spool.write.duration")
-                            .timer()
-                            .totalTime(TimeUnit.NANOSECONDS)
-                        > 0);
+                var queueTimer = meters.get("telemetry.spool.queue.duration").timer();
+                var writeTimer = meters.get("telemetry.spool.write.duration").timer();
+                assertTrue(queueTimer.totalTime(TimeUnit.NANOSECONDS) > 0);
+                assertTrue(writeTimer.totalTime(TimeUnit.NANOSECONDS) > 0);
               });
     }
   }
