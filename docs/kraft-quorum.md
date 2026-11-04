@@ -72,6 +72,9 @@ and worker query path with up to six single-event probes. Each probe must confir
 an HTTP 202 receipt and a matching query; a timed-out event that later becomes
 visible is insufficient. Warm-up attempts have bounded request and settle times
 and retain separate reports under `warmup/`.
+Kafka setup CLI calls allow up to 60 seconds for JVM startup on a shared runner;
+topic-readiness polling stops starting new attempts after three minutes. These
+setup bounds do not change application acceptance deadlines or broker ISR policy.
 
 The smoke then measures a small pre-failure accepted-ID cohort, force-stops the
 **currently elected** metadata controller, verifies a **different** leader is

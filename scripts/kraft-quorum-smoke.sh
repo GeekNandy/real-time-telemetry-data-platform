@@ -39,7 +39,8 @@ python3 scripts/test-kraft-quorum.py
 "${compose[@]}" up -d --build kafka kafka2 kafka3 registry postgres jaeger
 
 kafka_cli() {
-  timeout 20s "${compose[@]}" exec -T kafka "/opt/kafka/bin/$1" "${@:2}"
+  # Each invocation starts a JVM alongside six Kafka processes on a shared runner.
+  timeout 60s "${compose[@]}" exec -T kafka "/opt/kafka/bin/$1" "${@:2}"
 }
 for topic in telemetry.events.v1 telemetry.events.v1.dlt; do
   kafka_cli kafka-topics.sh --bootstrap-server localhost:9092 \
@@ -48,7 +49,8 @@ for topic in telemetry.events.v1 telemetry.events.v1.dlt; do
     --config retention.ms=604800000 --config unclean.leader.election.enable=false
 
   ready=false
-  for _ in $(seq 1 40); do
+  topic_deadline=$((SECONDS + 180))
+  while (( SECONDS < topic_deadline )); do
     if kafka_cli kafka-topics.sh --bootstrap-server localhost:9092 \
       --describe --topic "$topic" 2>/dev/null |
       python3 -c 'import re, sys
