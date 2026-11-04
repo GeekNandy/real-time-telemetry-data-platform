@@ -97,8 +97,17 @@ class KafkaAppendBatchTest {
       await()
           .atMost(Duration.ofSeconds(5))
           .untilAsserted(
-              () ->
-                  assertEquals(33, meters.get("telemetry.spool.append.duration").timer().count()));
+              () -> {
+                // Per-intent queue timing counts every event, including a coalesced group.
+                assertEquals(33, meters.get("telemetry.spool.queue.duration").timer().count());
+                assertEquals(33, meters.get("telemetry.spool.append.duration").timer().count());
+                // One durable-write sample per batch, not per record.
+                assertEquals(2, meters.get("telemetry.spool.write.duration").timer().count());
+                var queueTimer = meters.get("telemetry.spool.queue.duration").timer();
+                var writeTimer = meters.get("telemetry.spool.write.duration").timer();
+                assertTrue(queueTimer.totalTime(TimeUnit.NANOSECONDS) > 0);
+                assertTrue(writeTimer.totalTime(TimeUnit.NANOSECONDS) > 0);
+              });
     }
   }
 

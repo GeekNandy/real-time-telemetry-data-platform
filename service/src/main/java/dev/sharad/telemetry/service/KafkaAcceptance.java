@@ -63,6 +63,8 @@ final class KafkaAcceptance implements AutoCloseable {
   private final ScheduledThreadPoolExecutor deadlines;
   private final Thread writer;
   private final Timer appendDuration;
+  private final Timer queueDuration;
+  private final Timer writeDuration;
   private final DistributionSummary batchSize;
   private long queuedBytes;
   private int pendingWrites;
@@ -89,12 +91,9 @@ final class KafkaAcceptance implements AutoCloseable {
     this.appender = java.util.Objects.requireNonNull(appender);
     this.capacity = capacity;
     deadlineNanos = deadline.toNanos();
-    appendDuration =
-        Timer.builder("telemetry.spool.append.duration")
-            .minimumExpectedValue(Duration.ofNanos(100_000))
-            .maximumExpectedValue(Duration.ofSeconds(30))
-            .publishPercentileHistogram()
-            .register(meters);
+    appendDuration = phaseTimer(meters, "telemetry.spool.append.duration");
+    queueDuration = phaseTimer(meters, "telemetry.spool.queue.duration");
+    writeDuration = phaseTimer(meters, "telemetry.spool.write.duration");
     batchSize =
         DistributionSummary.builder("telemetry.spool.append.batch.size")
             .minimumExpectedValue(1.0)
@@ -115,6 +114,14 @@ final class KafkaAcceptance implements AutoCloseable {
     writer = new Thread(this::writeLoop, "telemetry-spool-append");
     writer.setDaemon(true);
     writer.start();
+  }
+
+  private static Timer phaseTimer(MeterRegistry meters, String name) {
+    return Timer.builder(name)
+        .minimumExpectedValue(Duration.ofNanos(100_000))
+        .maximumExpectedValue(Duration.ofSeconds(30))
+        .publishPercentileHistogram()
+        .register(meters);
   }
 
   CompletionStage<DurableLog.Position> append(
@@ -185,6 +192,10 @@ final class KafkaAcceptance implements AutoCloseable {
   }
 
   private void persist(List<Write> batch) {
+    long writeStarted = System.nanoTime();
+    // One observation per accepted intent: queueing/coalescing until its batch starts persisting.
+    for (var write : batch)
+      queueDuration.record(writeStarted - write.began(), TimeUnit.NANOSECONDS);
     Exception failure = null;
     try {
       appender.append(
@@ -205,6 +216,8 @@ final class KafkaAcceptance implements AutoCloseable {
     } catch (IOException | RuntimeException error) {
       failure = error;
     } finally {
+      // One observation per write attempt, not per record: includes encoding, I/O and registration.
+      writeDuration.record(System.nanoTime() - writeStarted, TimeUnit.NANOSECONDS);
       batchSize.record(batch.size());
       synchronized (this) {
         for (var write : batch) {
