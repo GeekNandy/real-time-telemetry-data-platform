@@ -34,7 +34,40 @@ PY_SECRETS
 
 # The -p project name gives every controller and broker a fresh, isolated volume.
 python3 scripts/test-kraft-quorum.py
-"${compose[@]}" up -d --build
+# Bring up storage and transport first. The collector checks actual replication/ISR
+# at startup and must fail closed, not race Kafka's first topic propagation.
+"${compose[@]}" up -d --build kafka kafka2 kafka3 registry postgres jaeger
+
+kafka_cli() {
+  timeout 20s "${compose[@]}" exec -T kafka "/opt/kafka/bin/$1" "${@:2}"
+}
+for topic in telemetry.events.v1 telemetry.events.v1.dlt; do
+  kafka_cli kafka-topics.sh --bootstrap-server localhost:9092 \
+    --create --if-not-exists --topic "$topic" --partitions 3 \
+    --replication-factor 3 --config min.insync.replicas=2 \
+    --config retention.ms=604800000 --config unclean.leader.election.enable=false
+
+  ready=false
+  for _ in $(seq 1 40); do
+    if kafka_cli kafka-topics.sh --bootstrap-server localhost:9092 \
+      --describe --topic "$topic" 2>/dev/null |
+      python3 -c 'import re, sys
+parts = [line for line in sys.stdin if "Partition:" in line]
+sys.exit(0 if len(parts) == 3 and all(
+  (m := re.search(r"Isr: ([0-9,]+)", p)) and len(m.group(1).split(",")) >= 2
+  for p in parts
+) else 1)'; then
+      ready=true
+      break
+    fi
+    sleep 2
+  done
+  if [[ "$ready" != true ]]; then
+    echo "Topic $topic failed to reach minISR=2" >&2
+    exit 1
+  fi
+done
+"${compose[@]}" up -d collector worker
 python3 scripts/wait-ready.py
 python3 scripts/demo-token.py --env-file "$scratch/env" --tenant kraft-smoke --console > "$scratch/token"
 chmod 600 "$scratch/token"
