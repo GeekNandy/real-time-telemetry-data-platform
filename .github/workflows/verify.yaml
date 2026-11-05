@@ -71,7 +71,9 @@ jobs:
         env:
           DATABASE_PASSWORD: ci-synthetic-password
           DEMO_JWT_SECRET: ci-only-demo-key-at-least-thirty-two-bytes
-        run: docker compose config --quiet
+        run: |
+          docker compose config --quiet
+          python3 scripts/test-kraft-quorum.py
       - name: Collect reports
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

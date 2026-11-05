@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.net.ssl.KeyManagerFactory;
@@ -39,6 +40,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.netty.http.client.HttpClient;
@@ -47,6 +50,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 class OidcHttpsContractTest {
   private static final Duration BUDGET = Duration.ofSeconds(5);
+  private static final int DRIP_BYTES = 20;
   private static Path certificates;
   private static SSLContext serverTls;
   private static X509Certificate certificate;
@@ -175,12 +179,13 @@ class OidcHttpsContractTest {
       if (mode.get().equals("oversized")) body = " ".repeat(70000) + body;
       exchange.getResponseHeaders().add("Content-Type", "application/json");
       byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-      exchange.sendResponseHeaders(200, bytes.length);
-      if (mode.get().equals("drip")) {
-        for (int i = 0; i < 20; i++) {
+      boolean drip = mode.get().equals("drip");
+      exchange.sendResponseHeaders(200, bytes.length + (drip ? DRIP_BYTES : 0));
+      if (drip) {
+        for (int i = 0; i < DRIP_BYTES; i++) {
           exchange.getResponseBody().write(' ');
-          dripBytes.incrementAndGet();
           exchange.getResponseBody().flush();
+          dripBytes.incrementAndGet();
           Thread.sleep(80);
         }
       }
@@ -373,12 +378,55 @@ class OidcHttpsContractTest {
 
   @Test
   void boundsWholeBodyEvenWhenBytesKeepArriving() throws Exception {
+    var transport = trustedTransport();
+    String endpoint = issuer() + "/jwks";
+    // Complete cold TLS setup, then initialize the exact client before measuring its body deadline.
+    transport.warmup().block(BUDGET);
+    String expected = new JWKSet(first.toPublicJWK()).toString();
+    assertEquals(
+        expected,
+        transport
+            .get()
+            .uri(endpoint)
+            .responseSingle(
+                (response, content) -> {
+                  assertEquals(200, response.status().code());
+                  return content.asString();
+                })
+            .block(BUDGET));
+    var client = IdentityHttpClient.build(issuer(), "", transport, Duration.ofMillis(800));
+    assertEquals(
+        expected, client.get().uri(endpoint).retrieve().bodyToMono(String.class).block(BUDGET));
+    var receivedBytes = new AtomicInteger();
     mode.set("drip");
     long started = System.nanoTime();
-    reject(decoder(trustedClient(Duration.ofMillis(800))), token(first, claims().build()));
+    var failure =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                client
+                    .get()
+                    .uri(endpoint)
+                    .retrieve()
+                    .bodyToFlux(DataBuffer.class)
+                    .map(
+                        buffer -> {
+                          int count = buffer.readableByteCount();
+                          DataBufferUtils.release(buffer);
+                          return count;
+                        })
+                    .doOnNext(receivedBytes::addAndGet)
+                    .then()
+                    .block(BUDGET));
     assertTrue(Duration.ofNanos(System.nanoTime() - started).compareTo(Duration.ofSeconds(3)) < 0);
+    Throwable cause = failure;
+    while (cause.getCause() != null) cause = cause.getCause();
+    var timeout = assertInstanceOf(TimeoutException.class, cause);
+    assertEquals("Identity response deadline exceeded", timeout.getMessage());
     assertTrue(
         dripBytes.get() >= 2, "Response bytes must arrive before absolute body deadline expires");
+    assertTrue(
+        receivedBytes.get() >= 2, "The client must consume bytes before the deadline expires");
   }
 
   @Test

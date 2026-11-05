@@ -1,0 +1,38 @@
+name: KRaft quorum failover exercise
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - compose.kraft-quorum.yaml
+      - scripts/kraft-quorum-smoke.sh
+      - scripts/test-kraft-quorum.py
+      - .github/workflows/kraft-quorum.yaml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: kraft-quorum-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  single-host-failover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Validate merged KRaft Compose topology
+        run: python3 scripts/test-kraft-quorum.py
+      - name: Reconcile telemetry through controller leader crash
+        run: bash scripts/kraft-quorum-smoke.sh
+      - name: Preserve isolated synthetic fault evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: kraft-quorum-smoke
+          path: data/kraft-quorum-smoke/
+          if-no-files-found: warn
+          retention-days: 1
