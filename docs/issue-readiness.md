@@ -35,5 +35,19 @@ SLO release validation. Regression tests accompany confirmed defects. This is
 automated code review and local verification, not independent human approval,
 an exhaustive security audit or production operational evidence.
 
+| Confirmed defect | Correction and regression |
+| --- | --- |
+| Broker-sized poison records exceeded the 32 KiB ingestion producer's dead-letter limit, blocking the valid partition suffix. | A separate bounded DLT producer and explicit topic limits preserve the full payload before offset advancement. `DeadLetterBoundsIT` exercises a real Kafka record whose quarantine headers exceed the source topic ceiling. See the [upgrade requirement](worker.md). |
+| Spring's default producer failure listener logged record keys, which may identify tenants or events. | Both ingestion and DLT templates use fixed failure diagnostics without record contents or upstream exception text. Real rejected sends exercise the Boot-configured template and the DLT copy. |
+| Authenticated Python requests forwarded credentials when following redirects. | Shared transport refuses redirects; actual HTTP peers verify that the second origin receives no request. Schema migration also bounds and validates returned data and stops when its compatibility-policy write is unconfirmed. |
+| A release report with only an arbitrary passing gate could satisfy the aggregate validator. | The release validator requires each profile's complete gate inventory and boolean decisions. Missing latency, reconciliation, profiling, heap or recovery gates fail validation. |
+| The MCP operator replaced valid degraded health responses with `UNAVAILABLE`. | HTTP 503 retains only `DOWN` or `OUT_OF_SERVICE`; status details stay private and metrics still require HTTP 200. Actual packaged HTTP/TLS tests cover both paths. |
+| Recorded-run validation accepted UUID duplicates across letter casing and incorrect unresolved-ID lists. | Canonical identity comparisons require the exact unresolved accepted-ID set and at least one accepted event for successful reconciliation. Node and Chromium contracts verify the explorer. |
+
+Python script socket timeouts remain inactivity bounds, rather than absolute
+whole-response deadlines. Likewise, the documented compressed-record expansion
+limit and the scope of the single-host controller exercise remain operational
+limitations; the fixes do not establish broader availability guarantees.
+
 Real cloud deployment, on-call history and multi-failure-domain availability
 remain separate evidence. No paid resources are needed for the local fixes.
