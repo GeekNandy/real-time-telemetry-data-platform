@@ -57,6 +57,10 @@ jobs:
         run: python3 scripts/test-wait-ready.py
       - name: Test load and reconciliation contracts
         run: python3 scripts/test-load.py
+      - name: Verify credentialed clients reject redirects and bound migration responses
+        run: |
+          python3 scripts/test-http-transport.py
+          python3 scripts/test-schema-bootstrap.py
       - name: Test capacity and profiling report contracts
         run: python3 scripts/test-capacity.py
       - name: Verify the optional local read-only MCP adapter

@@ -6,7 +6,9 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 ROOT=Path(__file__).resolve().parents[1]
@@ -17,6 +19,37 @@ REPORT=module('slo-report');RELEASE=module('slo-release');TOOL=REPORT.TOOL
 RUN=module('slo-run')
 
 class SloReports(unittest.TestCase):
+    def test_missing_docker_resource_controls_stop_before_build_or_workload(self):
+        commands=[]
+        info=dict(CgroupDriver='none',CgroupVersion='2',MemoryLimit=False,
+            CpuCfsPeriod=False,CpuCfsQuota=False,CPUSet=False)
+        def command(args):
+            commands.append(args)
+            if args==['git','rev-parse','HEAD']:return SimpleNamespace(stdout='a'*40)
+            if args==['git','status','--porcelain']:return SimpleNamespace(stdout='')
+            if args==['docker','info','--format','{{json .}}']:return SimpleNamespace(stdout=json.dumps(info))
+            self.fail('Resource preflight must stop before command: '+str(args))
+        with tempfile.TemporaryDirectory() as folder:
+            output=Path(folder)/'experiment'
+            with patch.object(RUN,'run',side_effect=command),patch.object(sys,'argv',
+                ['slo-run.py','--mode','pilot','--profile','reference','--repeat','1','--output',str(output)]):
+                with self.assertRaisesRegex(RuntimeError,'require enforced Docker'):
+                    RUN.main()
+            self.assertEqual(info,json.loads((output/'artifact/resource-controls.json').read_text()))
+        self.assertEqual(3,len(commands))
+
+    def test_every_resource_control_is_required_including_on_rootless_daemons(self):
+        info=dict(CgroupDriver='systemd',CgroupVersion='2',MemoryLimit=True,
+            CpuCfsPeriod=True,CpuCfsQuota=True,CPUSet=True,SecurityOptions=['name=rootless'])
+        RUN.require_resource_controls(info)
+        RUN.require_resource_controls(dict(info,CgroupDriver='cgroupfs',CgroupVersion='1'))
+        for key in ('MemoryLimit','CpuCfsPeriod','CpuCfsQuota','CPUSet','CgroupDriver','CgroupVersion'):
+            with self.subTest(key=key):
+                incomplete=info.copy();incomplete.pop(key)
+                with self.assertRaisesRegex(RuntimeError,key):RUN.require_resource_controls(incomplete)
+                unavailable=dict(info);unavailable[key]=False
+                with self.assertRaisesRegex(RuntimeError,key):RUN.require_resource_controls(unavailable)
+
     def test_warmup_drain_waits_for_unwritten_intents_even_when_disk_and_source_lag_are_zero(self):
         clock=[0]
         def sleep(seconds):clock[0]+=seconds
@@ -106,25 +139,63 @@ class SloReports(unittest.TestCase):
         protocol=hashlib.sha256((ROOT/'tools/slo/workload.js').read_bytes()).hexdigest()
         profiles=hashlib.sha256((ROOT/'tools/slo/profiles.json').read_bytes()).hexdigest()
         for p,r in [(p,r) for p in ('reference','scale') for r in (1,2,3)]+[('soak',1),('burst',1)]:
+            # Derive the fixture's gate names from actual report generation, independently of
+            # the release validator's required inventory. Values model a healthy full run.
+            with tempfile.TemporaryDirectory() as evidence:
+                f=self.fixture(Path(evidence));f[0]['profile']=p
+                if p=='burst':f[0].update({k:v for k,v in TOOL.profile(p).items() if k not in f[0]})
+                generated=REPORT.report(*f[:6],heap={role:{'passed':True} for role in ('collector','worker')})
+                gates={key:True for key in generated['gates']}
+                gates.update(complete_stage_observations=True,profile_coverage=True)
             folder=root/f'{p}-{r}';folder.mkdir();phases=['baseline','tuned','tuned-profiled'] if p in ('reference','scale') else ['tuned-profiled']
             (folder/'case.json').write_text(json.dumps(dict(mode='full',profile=p,repeat=r,phase_order=phases)))
             for phase in phases:
                 target=folder/phase;target.mkdir()
                 (target/'config.json').write_text(json.dumps(TOOL.profile(p)))
                 (target/'report.json').write_text(json.dumps(dict(profile=p,repeat=r,phase=phase,mode='full',eligible=True,nominal_offered=TOOL.offered(TOOL.profile(p)),window_start_ms=0,window_end_ms=TOOL.profile(p)['duration_seconds']*1000,
-                    protocol_sha256=protocol,profiles_sha256=profiles,gates={'fixture_gate':True},passed=True,
+                    protocol_sha256=protocol,profiles_sha256=profiles,gates=gates,passed=True,
                     source_revision=TOOL.BASELINE if phase=='baseline' else 'a'*40)))
     def test_release_requires_all_cases_repetitions_phases_and_pinned_protocol(self):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);self.matrix(root)
             self.assertTrue(RELEASE.aggregate(root,'full')['passed'])
             path=root/'scale-2/tuned/report.json';original=json.loads(path.read_text())
-            failed=copy.deepcopy(original);failed.update(gates={'fixture_gate':False},passed=False);path.write_text(json.dumps(failed))
+            failed=copy.deepcopy(original);failed['gates']['acceptance_p99']=False;failed['passed']=False;path.write_text(json.dumps(failed))
             self.assertFalse(RELEASE.aggregate(root,'full')['passed'])
             drift=copy.deepcopy(original);drift['protocol_sha256']='different';path.write_text(json.dumps(drift))
             with self.assertRaises(ValueError):RELEASE.aggregate(root,'full')
             path.write_text(json.dumps(original));(root/'soak-1/case.json').unlink()
             with self.assertRaises(ValueError):RELEASE.aggregate(root,'full')
+    def test_release_rejects_missing_sustained_soak_burst_and_profile_evidence(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);self.matrix(root)
+            for relative,key in [('reference-1/tuned','all_202_reconciled'),
+                ('scale-2/tuned','acceptance_p99'),('scale-2/baseline','cpu_headroom'),
+                ('reference-3/tuned-profiled','profile_coverage'),
+                ('soak-1/tuned-profiled','retained_heap_guard'),
+                ('burst-1/tuned-profiled','source_backlog_recovered')]:
+                with self.subTest(phase=relative,gate=key):
+                    path=root/relative/'report.json';original=json.loads(path.read_text())
+                    missing=copy.deepcopy(original);missing['gates'].pop(key);path.write_text(json.dumps(missing))
+                    with self.assertRaisesRegex(ValueError,'workload gates'):RELEASE.aggregate(root,'full')
+                    path.write_text(json.dumps(original))
+            path=root/'reference-1/tuned/report.json';original=json.loads(path.read_text())
+            for gates in ({'fixture_gate':True},{**original['gates'],'unrecognized_gate':True},[],None):
+                with self.subTest(gates=gates):
+                    invalid=copy.deepcopy(original);invalid['gates']=gates;path.write_text(json.dumps(invalid))
+                    with self.assertRaisesRegex(ValueError,'workload gates'):RELEASE.aggregate(root,'full')
+
+    def test_release_requires_boolean_gate_outcomes_and_boolean_decision(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);self.matrix(root);path=root/'reference-1/tuned/report.json'
+            original=json.loads(path.read_text())
+            for value in (1,'true',None):
+                with self.subTest(value=value):
+                    invalid=copy.deepcopy(original);invalid['gates']['all_202_reconciled']=value
+                    path.write_text(json.dumps(invalid))
+                    with self.assertRaisesRegex(ValueError,'gate accounting'):RELEASE.aggregate(root,'full')
+            invalid=copy.deepcopy(original);invalid['passed']=1;path.write_text(json.dumps(invalid))
+            with self.assertRaisesRegex(ValueError,'gate accounting'):RELEASE.aggregate(root,'full')
     def test_scale_pilot_cannot_be_released_or_substituted_for_the_complete_matrix(self):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);self.matrix(root)

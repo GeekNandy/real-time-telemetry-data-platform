@@ -73,6 +73,11 @@ the service CPU set. Services, dependencies and generator still share a machine
 and storage. These constraints prevent interpreting a passing point or overload
 as a production capacity ceiling. No paid cloud resources are created.
 
+Before building images, the harness requires Docker to report working memory,
+CPU quota and CPU-set controls and records those capabilities in
+`artifact/resource-controls.json`. A rootless daemon without cgroup support
+cannot produce eligible evidence, even when Compose accepts resource settings.
+
 Compare the tuned source with the pinned Kafka-confirmed pre-tuning source
 `41d7728d47b923e54a2cb8ef8e3eaa7e34b001cf` under identical profiles. This preserves
 the acknowledgement contract in the comparison. Profiled/unprofiled differences
@@ -82,6 +87,11 @@ the harness and are ineligible for sustained/soak claims. Pull requests run the
 30-second reference pilot. Manual pilots can select reference (100/s) or scale
 (500/s), retaining that profile's role limits and target budgets. Selecting a
 pilot never changes the complete eight-case matrix required for a full release.
+
+The aggregate validator requires the complete named gate inventory for each
+profile, including profiling, retained heap and burst recovery where applicable.
+Missing or unexpected gates and nonboolean decisions invalidate a report;
+omitting a failed measurement cannot produce a passing release decision.
 
 The protocol follows [SLO/error-budget reasoning](https://sre.google/workbook/implementing-slos/)
 and k6's [arrival-rate scheduling](https://grafana.com/docs/k6/latest/using-k6/scenarios/executors/constant-arrival-rate/)

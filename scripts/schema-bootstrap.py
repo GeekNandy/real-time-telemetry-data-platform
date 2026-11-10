@@ -7,6 +7,7 @@ from pathlib import Path
 import urllib.error
 import urllib.parse
 import urllib.request
+from http_transport import open_without_redirects
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--registry-url", required=True)
@@ -19,6 +20,7 @@ if url.username or url.password or not url.hostname or (
 authorization = os.environ.get("SCHEMA_REGISTRY_AUTHORIZATION", "")
 base = args.registry_url.rstrip("/")
 subject = "telemetry.events-value"
+MAX_RESPONSE_BYTES = 1_048_576
 
 
 def request(method, path, body=None):
@@ -27,14 +29,23 @@ def request(method, path, body=None):
         headers["Authorization"] = authorization
     data = json.dumps(body).encode() if body is not None else None
     try:
-        with urllib.request.urlopen(urllib.request.Request(base + path, method=method, headers=headers, data=data), timeout=5) as response:
-            return response.status, json.load(response)
+        with open_without_redirects(urllib.request.Request(base + path, method=method, headers=headers, data=data), timeout=5) as response:
+            body = response.read(MAX_RESPONSE_BYTES + 1)
+            if len(body) > MAX_RESPONSE_BYTES:
+                raise SystemExit("Schema migration stopped: registry response exceeds the size bound")
+            value = json.loads(body)
+            if not isinstance(value, dict):
+                raise ValueError("Expected a JSON object")
+            return response.status, value
     except urllib.error.HTTPError as failure:
+        failure.close()
         if failure.code == 404:
             return 404, {}
         raise SystemExit(f"Schema migration stopped: registry HTTP {failure.code}") from None
     except urllib.error.URLError:
         raise SystemExit("Schema migration stopped: registry unavailable") from None
+    except (ValueError, UnicodeError):
+        raise SystemExit("Schema migration stopped: invalid registry response") from None
 
 
 status, config = request("GET", "/config/" + subject + "?defaultToGlobal=false")
@@ -49,4 +60,7 @@ for name in ("telemetry-v1.avsc", "telemetry-v2.avsc"):
     if status != 404 and compatibility.get("is_compatible") is not True:
         raise SystemExit(f"Compatibility rejected {name}; no version was registered")
     _, registered = request("POST", "/subjects/" + subject + "/versions?normalize=true", body)
-    print(json.dumps({"schema": name, "id": registered["id"]}))
+    schema_id = registered.get("id")
+    if type(schema_id) is not int or not 1 <= schema_id <= 2_147_483_647:
+        raise SystemExit("Schema migration stopped: invalid registry response")
+    print(json.dumps({"schema": name, "id": schema_id}))

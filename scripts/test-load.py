@@ -35,6 +35,12 @@ class LoadContracts(unittest.TestCase):
 
             def do_POST(self):
                 event = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                if owner.mode == 'redirect-post':
+                    self.send_response(302)
+                    self.send_header('Location', owner.redirect_url)
+                    self.send_header('Content-Length', '0')
+                    self.end_headers()
+                    return
                 owner.ids.add(event['eventId'])
                 if owner.mode == 'truncated-receipt':
                     self.send_response(202)
@@ -50,6 +56,12 @@ class LoadContracts(unittest.TestCase):
                     self.reply(202, {'eventId': event['eventId']})
 
             def do_GET(self):
+                if owner.mode == 'redirect-query':
+                    self.send_response(302)
+                    self.send_header('Location', owner.redirect_url)
+                    self.send_header('Content-Length', '0')
+                    self.end_headers()
+                    return
                 event_id = self.path.rsplit('/', 1)[-1]
                 if owner.mode == 'missing' or event_id not in owner.ids:
                     self.reply(404, {})
@@ -133,6 +145,50 @@ class LoadContracts(unittest.TestCase):
         self.assertEqual(2, summary['ambiguous_client_outcomes']['count'])
         self.assertEqual(2, summary['ambiguous_client_outcomes']['later_visible'])
         self.assertFalse(summary['accepted_reconciliation']['passed'])
+
+    def test_redirects_keep_outcome_accounting_without_forwarding_the_token(self):
+        destination_requests = []
+
+        class Destination(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_GET(self):
+                destination_requests.append(self.headers.get('Authorization'))
+                self.send_response(200)
+                self.send_header('Content-Length', '2')
+                self.end_headers()
+                self.wfile.write(b'{}')
+
+            do_POST = do_GET
+
+        destination = ThreadingHTTPServer(('127.0.0.1', 0), Destination)
+        destination.daemon_threads = True
+        thread = threading.Thread(target=destination.serve_forever, daemon=True)
+        thread.start()
+        self.redirect_url = f'http://127.0.0.1:{destination.server_port}/capture'
+        try:
+            for mode in ('redirect-post', 'redirect-query'):
+                with self.subTest(mode=mode):
+                    self.mode = mode
+                    result, output = self.run_client()
+                    self.assertEqual(1, result.returncode, result.stderr)
+                    self.assertEqual([], destination_requests)
+                    summary = json.loads((output / 'summary.json').read_text())
+                    self.assertEqual(2, summary['scheduled'])
+                    self.assertEqual(2, sum(summary['outcomes'].values()))
+                    self.assertFalse(summary['accepted_reconciliation']['passed'])
+                    if mode == 'redirect-post':
+                        self.assertEqual({'302': 2}, summary['outcomes'])
+                        self.assertEqual(0, summary['accepted_reconciliation']['accepted'])
+                    else:
+                        self.assertEqual({'202': 2}, summary['outcomes'])
+                        self.assertEqual(2, len(summary['accepted_reconciliation']['unresolved_ids']))
+                        self.assertGreater(summary['query_outcomes'].get('302', 0), 0)
+        finally:
+            destination.shutdown()
+            destination.server_close()
+            thread.join(2)
 
 
 if __name__ == '__main__':
