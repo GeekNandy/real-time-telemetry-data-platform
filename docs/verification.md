@@ -1,5 +1,8 @@
 # Verification evidence
 
+The [open issue readiness checklist](issue-readiness.md) separates the remaining
+human-review and workload-release gates from these historical verification runs.
+
 Verification results identify the tested source, execution revision and environment.
 The Kafka-confirmed runtime passed [CI 40579394488](https://github.com/GeekNandy/real-time-telemetry-data-platform/actions/runs/40579394488)
 on source `556cfe22739b`. Its merged revision is `3876a0e0d816`; the executed and
