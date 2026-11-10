@@ -10,7 +10,9 @@ import org.apache.kafka.clients.admin.TopicDescription;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.TopicPartitionInfo;
 import org.junit.jupiter.api.Test;
+import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaAdmin;
+import org.springframework.kafka.core.KafkaTemplate;
 
 class KafkaAcceptancePolicyTest {
   private static final Map<String, Object> PRODUCER =
@@ -93,5 +95,75 @@ class KafkaAcceptancePolicyTest {
     assertThrows(
         IllegalStateException.class,
         () -> KafkaAcceptancePolicy.validateTopic(topic(3, 3), config(4, false), 3, 2));
+  }
+
+  private Config messageLimit(int bytes) {
+    return new Config(List.of(new ConfigEntry("max.message.bytes", Integer.toString(bytes))));
+  }
+
+  @Test
+  void quarantineRequiresEffectiveSourceAndDeadLetterByteBudgets() {
+    var source = messageLimit(KafkaAcceptancePolicy.SOURCE_MAX_BYTES);
+    var deadLetters = messageLimit(KafkaAcceptancePolicy.DEAD_LETTER_MAX_BYTES);
+    KafkaAcceptancePolicy.validateRecordBudgets(source, deadLetters);
+    KafkaAcceptancePolicy.validateRecordBudgets(messageLimit(32768), deadLetters);
+    KafkaAcceptancePolicy.validateRecordBudgets(source, messageLimit(4 * 1024 * 1024));
+    for (int invalid : new int[] {0, -1, KafkaAcceptancePolicy.SOURCE_MAX_BYTES + 1})
+      assertThrows(
+          IllegalStateException.class,
+          () -> KafkaAcceptancePolicy.validateRecordBudgets(messageLimit(invalid), deadLetters));
+    assertThrows(
+        IllegalStateException.class,
+        () -> KafkaAcceptancePolicy.validateRecordBudgets(source, source));
+    assertThrows(
+        IllegalStateException.class,
+        () ->
+            KafkaAcceptancePolicy.validateRecordBudgets(
+                source, messageLimit(KafkaAcceptancePolicy.DEAD_LETTER_MAX_BYTES - 1)));
+    assertThrows(
+        IllegalStateException.class,
+        () -> KafkaAcceptancePolicy.validateRecordBudgets(new Config(List.of()), deadLetters));
+    assertThrows(
+        IllegalStateException.class,
+        () -> KafkaAcceptancePolicy.validateRecordBudgets(source, new Config(List.of())));
+  }
+
+  @Test
+  void quarantineClonesTheProducerPolicyWithoutIncreasingTheCollectorBudget() {
+    var properties =
+        Map.<String, Object>of(
+            "bootstrap.servers",
+            "localhost:19091",
+            "acks",
+            "all",
+            "enable.idempotence",
+            true,
+            "max.request.size",
+            32768,
+            "buffer.memory",
+            16_777_216,
+            "security.protocol",
+            "SASL_SSL");
+    var factory = new DefaultKafkaProducerFactory<String, byte[]>(properties);
+    var original = new KafkaTemplate<>(factory);
+    try (var transport = new ConsumerConfiguration().deadLetterTransport(original)) {
+      var copied = transport.template().getProducerFactory();
+      assertNotSame(factory, copied);
+      assertEquals(32768, factory.getConfigurationProperties().get("max.request.size"));
+      assertEquals(
+          KafkaAcceptancePolicy.DEAD_LETTER_MAX_BYTES,
+          copied.getConfigurationProperties().get("max.request.size"));
+      for (String key :
+          List.of(
+              "bootstrap.servers",
+              "acks",
+              "enable.idempotence",
+              "buffer.memory",
+              "security.protocol"))
+        assertEquals(properties.get(key), copied.getConfigurationProperties().get(key));
+    } finally {
+      original.destroy();
+      factory.destroy();
+    }
   }
 }

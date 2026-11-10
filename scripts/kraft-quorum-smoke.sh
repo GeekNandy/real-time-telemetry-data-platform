@@ -52,10 +52,13 @@ kafka_cli() {
   timeout 60s "${compose[@]}" exec -T kafka "/opt/kafka/bin/$1" "${@:2}"
 }
 for topic in telemetry.events.v1 telemetry.events.v1.dlt; do
+  max_message_bytes=1048588
+  if [[ "$topic" == *.dlt ]]; then max_message_bytes=2097152; fi
   kafka_cli kafka-topics.sh --bootstrap-server localhost:9092 \
     --create --if-not-exists --topic "$topic" --partitions 3 \
     --replication-factor 3 --config min.insync.replicas=2 \
-    --config retention.ms=604800000 --config unclean.leader.election.enable=false
+    --config retention.ms=604800000 --config unclean.leader.election.enable=false \
+    --config "max.message.bytes=$max_message_bytes"
 
   ready=false
   topic_deadline=$((SECONDS + 180))

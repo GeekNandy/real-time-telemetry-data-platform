@@ -2,6 +2,8 @@ package dev.sharad.telemetry.service;
 
 import dev.sharad.telemetry.core.EventSink;
 import java.time.Duration;
+import java.util.Map;
+import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.TopicPartition;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -18,13 +20,34 @@ import org.springframework.util.backoff.FixedBackOff;
 @Configuration
 @Profile("!collector")
 public class ConsumerConfiguration {
+  /** A separate producer keeps quarantine headroom out of the collector's append budget. */
+  record DeadLetterTransport(KafkaTemplate<String, byte[]> template) implements AutoCloseable {
+    @Override
+    public void close() {
+      template.destroy();
+    }
+  }
+
+  @Bean(destroyMethod = "close")
+  DeadLetterTransport deadLetterTransport(KafkaTemplate<String, byte[]> kafka) {
+    // Nonempty overrides make KafkaTemplate own a copied factory, including its authentication,
+    // serializers, acknowledgement policy and bounded buffer. destroy() closes only that copy.
+    return new DeadLetterTransport(
+        new KafkaTemplate<>(
+            kafka.getProducerFactory(),
+            Map.of(
+                ProducerConfig.MAX_REQUEST_SIZE_CONFIG,
+                KafkaAcceptancePolicy.DEAD_LETTER_MAX_BYTES)));
+  }
+
   @Bean
   DefaultErrorHandler deliveryErrors(
-      KafkaTemplate<String, byte[]> kafka,
+      DeadLetterTransport transport,
       @Value("${telemetry.dead-letter-topic}") String deadLetterTopic) {
     var recoverer =
         new DeadLetterPublishingRecoverer(
-            kafka, (record, error) -> new TopicPartition(deadLetterTopic, record.partition()));
+            transport.template(),
+            (record, error) -> new TopicPartition(deadLetterTopic, record.partition()));
     recoverer.setFailIfSendResultIsError(true);
     recoverer.setWaitForSendResultTimeout(Duration.ofSeconds(10));
     var errors =

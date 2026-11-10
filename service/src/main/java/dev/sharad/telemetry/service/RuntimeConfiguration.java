@@ -137,7 +137,7 @@ public class RuntimeConfiguration {
       @Value("${telemetry.replication-factor}") int replicas,
       @Value("${telemetry.min-in-sync-replicas}") int minimum,
       @Value("${telemetry.retention.log-ms}") long retention) {
-    return topic(name, replicas, minimum, retention);
+    return topic(name, replicas, minimum, retention, KafkaAcceptancePolicy.SOURCE_MAX_BYTES);
   }
 
   @Bean
@@ -146,10 +146,10 @@ public class RuntimeConfiguration {
       @Value("${telemetry.replication-factor}") int replicas,
       @Value("${telemetry.min-in-sync-replicas}") int minimum,
       @Value("${telemetry.retention.log-ms}") long retention) {
-    return topic(name, replicas, minimum, retention);
+    return topic(name, replicas, minimum, retention, KafkaAcceptancePolicy.DEAD_LETTER_MAX_BYTES);
   }
 
-  private NewTopic topic(String name, int replicas, int minimum, long retention) {
+  private NewTopic topic(String name, int replicas, int minimum, long retention, int maxBytes) {
     if (replicas < 1 || minimum < 1 || minimum > replicas || retention < 60000)
       throw new IllegalArgumentException("Invalid broker policy");
     return TopicBuilder.name(name)
@@ -158,6 +158,7 @@ public class RuntimeConfiguration {
         .config(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, Integer.toString(minimum))
         .config(TopicConfig.RETENTION_MS_CONFIG, Long.toString(retention))
         .config(TopicConfig.UNCLEAN_LEADER_ELECTION_ENABLE_CONFIG, "false")
+        .config(TopicConfig.MAX_MESSAGE_BYTES_CONFIG, Integer.toString(maxBytes))
         .build();
   }
 }
