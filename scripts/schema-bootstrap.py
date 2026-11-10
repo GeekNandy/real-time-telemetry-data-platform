@@ -50,7 +50,9 @@ def request(method, path, body=None):
 
 status, config = request("GET", "/config/" + subject + "?defaultToGlobal=false")
 if status == 404:
-    request("PUT", "/config/" + subject, {"compatibility": "FULL_TRANSITIVE"})
+    updated_status, updated = request("PUT", "/config/" + subject, {"compatibility": "FULL_TRANSITIVE"})
+    if updated_status != 200 or updated.get("compatibility") != "FULL_TRANSITIVE":
+        raise SystemExit("Schema migration stopped: compatibility policy update unconfirmed")
 elif config.get("compatibilityLevel") != "FULL_TRANSITIVE":
     raise SystemExit("Existing subject has a different compatibility policy; review before changing it")
 root = Path(__file__).resolve().parents[1] / "event-schemas/src/main/resources/avro"

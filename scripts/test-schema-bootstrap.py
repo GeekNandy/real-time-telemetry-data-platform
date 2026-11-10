@@ -58,6 +58,8 @@ class SchemaBootstrapContracts(unittest.TestCase):
                     self.reply(200, [owner.token])
                 elif self.command == 'GET':
                     self.reply(404, {})
+                elif self.command == 'PUT' and owner.mode == 'policy-response':
+                    self.reply(owner.policy_status, owner.policy_response)
                 elif self.command == 'PUT':
                     self.reply(200, {'compatibility': 'FULL_TRANSITIVE'})
                 elif self.path.startswith('/compatibility/'):
@@ -116,6 +118,21 @@ class SchemaBootstrapContracts(unittest.TestCase):
                 self.assertNotEqual(0, result.returncode)
                 self.assertIn('registry HTTP 302', result.stderr)
                 self.assertEqual([], self.destination_requests)
+
+    def test_unconfirmed_policy_write_stops_before_schema_registration(self):
+        self.mode = 'policy-response'
+        for status, value in ((404, {}), (201, {'compatibility': 'FULL_TRANSITIVE'}),
+                              (200, {}), (200, {'compatibility': 'BACKWARD'}),
+                              (200, {'compatibility': self.token})):
+            with self.subTest(status=status, value=value):
+                self.requests.clear()
+                self.policy_status = status
+                self.policy_response = value
+                result = self.bootstrap()
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn('compatibility policy update unconfirmed', result.stderr)
+                self.assertEqual('', result.stdout)
+                self.assertEqual(['GET', 'PUT'], [r[0] for r in self.requests])
 
     def test_oversized_registry_body_stops_migration(self):
         self.mode = 'oversized'
