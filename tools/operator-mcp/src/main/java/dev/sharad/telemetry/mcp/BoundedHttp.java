@@ -32,6 +32,16 @@ final class BoundedHttp implements AutoCloseable {
   }
 
   byte[] get(URI origin, String path, String token) throws Failure {
+    return get(origin, path, token, false).body();
+  }
+
+  Response getHealth(URI origin) throws Failure {
+    return get(origin, "/actuator/health", null, true);
+  }
+
+  record Response(int statusCode, byte[] body) {}
+
+  private Response get(URI origin, String path, String token, boolean health) throws Failure {
     var body = new LimitedBody();
     CompletableFuture<HttpResponse<byte[]>> response = null;
     try {
@@ -46,7 +56,7 @@ final class BoundedHttp implements AutoCloseable {
       }
       response = client.sendAsync(request.build(), ignored -> body);
       var result = response.get(deadline.toMillis(), TimeUnit.MILLISECONDS);
-      if (result.statusCode() != 200) {
+      if (result.statusCode() != 200 && !(health && result.statusCode() == 503)) {
         throw new Failure(
             switch (result.statusCode()) {
               case 401 -> "AUTHENTICATION_REQUIRED";
@@ -55,7 +65,7 @@ final class BoundedHttp implements AutoCloseable {
               default -> "UPSTREAM_UNAVAILABLE";
             });
       }
-      return result.body();
+      return new Response(result.statusCode(), result.body());
     } catch (InterruptedException error) {
       Thread.currentThread().interrupt();
       throw new Failure("CANCELLED");

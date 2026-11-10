@@ -48,6 +48,13 @@ class Peer(http.server.BaseHTTPRequestHandler):
             }
         if status != 200:
             data = {"error": PRIVATE, "authorization": TOKEN}
+        if mode in ("down", "out_of_service", "unavailable", "contradictory_health", "health_error"):
+            status = 500 if mode == "health_error" else 503
+            data = {"error": PRIVATE, "authorization": TOKEN}
+            if self.path == "/actuator/health" and mode != "unavailable":
+                data = {"status": {"down": "DOWN", "out_of_service": "OUT_OF_SERVICE",
+                                   "contradictory_health": "UP", "health_error": "DOWN"}[mode],
+                        "components": {"private": PRIVATE}}
         encoded = json.dumps(data).encode()
         if mode == "oversized":
             encoded = b"x" * (128 * 1024)
@@ -208,6 +215,21 @@ class OperatorContract(unittest.TestCase):
         ]:
             self.assertToolError(self.client.call(name, arguments))
         self.assertEqual([], self.peer.requests)
+
+    def test_degraded_health_retains_status_without_exposing_details_or_relaxing_metrics(self):
+        for mode, status in (("down", "DOWN"), ("out_of_service", "OUT_OF_SERVICE"),
+                             ("unavailable", "UNAVAILABLE"), ("contradictory_health", "UNAVAILABLE"),
+                             ("health_error", "UNAVAILABLE")):
+            self.peer.mode = mode
+            response = self.client.call("get_platform_health")
+            self.assertEqual({"collector": {"status": status}, "worker": {"status": status}},
+                             self.output(response))
+            self.assertNotIn(PRIVATE, json.dumps(response))
+            self.assertNotIn(TOKEN, json.dumps(response))
+            self.assertToolError(self.client.call("get_ingestion_metrics", {"component": "collector"}),
+                                 "UPSTREAM_UNAVAILABLE")
+        self.assertTrue(all(token is None for _, path, token in self.peer.requests
+                            if path == "/actuator/health"))
 
     def test_api_authorization_is_enforced_and_token_file_can_rotate(self):
         self.token.write_text("invalid.token.value")
