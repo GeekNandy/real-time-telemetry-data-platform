@@ -22,6 +22,8 @@ headers and the added quarantine metadata when a malformed record approaches
 the source ceiling. The collector's producer request limit remains 32 KiB.
 The DLT producer inherits broker authentication, `acks=all`, idempotence and the
 bounded producer buffer, and closes with the worker.
+Both producer templates use a fixed send-failure diagnostic without copying
+record keys, payloads or upstream exception text into the producer listener log.
 
 Startup verifies the effective source ceiling is positive and no greater than
 1,048,588 bytes, and the DLT ceiling is at least 2 MiB. Existing DLT topics need

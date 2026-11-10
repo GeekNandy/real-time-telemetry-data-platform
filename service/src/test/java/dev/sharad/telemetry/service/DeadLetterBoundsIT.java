@@ -3,12 +3,16 @@ package dev.sharad.telemetry.service;
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import dev.sharad.telemetry.core.Event;
 import dev.sharad.telemetry.core.EventSink;
 import dev.sharad.telemetry.observability.PlatformTelemetry;
 import dev.sharad.telemetry.schema.AvroEventCodec;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.opentelemetry.api.OpenTelemetry;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -25,10 +29,17 @@ import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.kafka.autoconfigure.KafkaAutoConfiguration;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.BatchAcknowledgingMessageListener;
+import org.springframework.kafka.support.ProducerListener;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.kafka.KafkaContainer;
@@ -38,7 +49,77 @@ import org.testcontainers.kafka.KafkaContainer;
 class DeadLetterBoundsIT {
   private static final class ClosingMeters extends SimpleMeterRegistry implements AutoCloseable {}
 
+  @Configuration(proxyBeanMethods = false)
+  static class ProducerPrivacyConfiguration {
+    @Bean
+    ProducerListener<Object, Object> kafkaProducerListener() {
+      return new RuntimeConfiguration().kafkaProducerListener();
+    }
+  }
+
   @Container static final KafkaContainer KAFKA = new KafkaContainer("apache/kafka:4.0.0");
+
+  @Test
+  void failedCollectorAndQuarantineSendsLogNoRecordContents() throws Exception {
+    String topic = "producer-privacy-" + UUID.randomUUID();
+    String privateKey = "synthetic-private-tenant:event-identity";
+    String privatePayload = "synthetic-private-event-payload";
+    byte[] oversized = new byte[KafkaAcceptancePolicy.DEAD_LETTER_MAX_BYTES + 1];
+    System.arraycopy(
+        privatePayload.getBytes(StandardCharsets.UTF_8), 0, oversized, 0, privatePayload.length());
+    try (var admin = Admin.create(Map.of("bootstrap.servers", KAFKA.getBootstrapServers()))) {
+      admin
+          .createTopics(
+              List.of(new RuntimeConfiguration().deadLetterTopic(topic, 1, 1, 604_800_000)))
+          .all()
+          .get(20, TimeUnit.SECONDS);
+    }
+    var logger = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+    var captured = new ListAppender<ILoggingEvent>();
+    captured.setContext(logger.getLoggerContext());
+    captured.start();
+    logger.addAppender(captured);
+    try {
+      new ApplicationContextRunner()
+          .withConfiguration(AutoConfigurations.of(KafkaAutoConfiguration.class))
+          .withUserConfiguration(ProducerPrivacyConfiguration.class)
+          .withPropertyValues(
+              "spring.kafka.bootstrap-servers=" + KAFKA.getBootstrapServers(),
+              "spring.kafka.producer.key-serializer=" + StringSerializer.class.getName(),
+              "spring.kafka.producer.value-serializer=" + ByteArraySerializer.class.getName(),
+              "spring.kafka.producer.properties.max.request.size=32768")
+          .run(
+              context -> {
+                assertNull(context.getStartupFailure());
+                @SuppressWarnings("unchecked")
+                var original = (KafkaTemplate<String, byte[]>) context.getBean(KafkaTemplate.class);
+                try (var transport = new ConsumerConfiguration().deadLetterTransport(original)) {
+                  for (var template : List.of(original, transport.template())) {
+                    assertThrows(
+                        org.springframework.kafka.KafkaException.class,
+                        () -> template.send(new ProducerRecord<>(topic, 0, privateKey, oversized)));
+                  }
+                }
+              });
+      assertEquals(
+          2,
+          captured.list.stream()
+              .filter(
+                  event -> event.getLoggerName().equals(SanitizedProducerListener.class.getName()))
+              .count());
+      for (var event : captured.list) {
+        assertFalse(event.getFormattedMessage().contains(privateKey), event.getLoggerName());
+        assertFalse(event.getFormattedMessage().contains(privatePayload), event.getLoggerName());
+        if (event.getLoggerName().equals(SanitizedProducerListener.class.getName()))
+          assertNull(
+              event.getThrowableProxy(),
+              "Producer diagnostics must not attach upstream exception text");
+      }
+    } finally {
+      logger.detachAppender(captured);
+      captured.stop();
+    }
+  }
 
   @Test
   void quarantinesANearBrokerLimitRecordBeforeAdvancingToItsValidSuffix() throws Exception {

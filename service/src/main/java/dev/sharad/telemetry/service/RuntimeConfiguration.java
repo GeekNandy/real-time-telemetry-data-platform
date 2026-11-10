@@ -25,12 +25,18 @@ import org.springframework.http.codec.ServerCodecConfigurer;
 import org.springframework.kafka.config.TopicBuilder;
 import org.springframework.kafka.core.KafkaAdmin;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.ProducerListener;
 import org.springframework.web.reactive.config.WebFluxConfigurer;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 
 @Configuration
 public class RuntimeConfiguration {
+  @Bean
+  ProducerListener<Object, Object> kafkaProducerListener() {
+    return new SanitizedProducerListener<>();
+  }
+
   @Bean
   KafkaAcceptancePolicy kafkaAcceptancePolicy(
       KafkaAdmin admin,

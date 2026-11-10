@@ -32,12 +32,14 @@ public class ConsumerConfiguration {
   DeadLetterTransport deadLetterTransport(KafkaTemplate<String, byte[]> kafka) {
     // Nonempty overrides make KafkaTemplate own a copied factory, including its authentication,
     // serializers, acknowledgement policy and bounded buffer. destroy() closes only that copy.
-    return new DeadLetterTransport(
+    var template =
         new KafkaTemplate<>(
             kafka.getProducerFactory(),
             Map.of(
                 ProducerConfig.MAX_REQUEST_SIZE_CONFIG,
-                KafkaAcceptancePolicy.DEAD_LETTER_MAX_BYTES)));
+                KafkaAcceptancePolicy.DEAD_LETTER_MAX_BYTES));
+    template.setProducerListener(new SanitizedProducerListener<>());
+    return new DeadLetterTransport(template);
   }
 
   @Bean
