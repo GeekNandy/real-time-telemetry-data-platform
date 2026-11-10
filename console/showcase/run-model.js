@@ -16,8 +16,9 @@ export function validateRun(run) {
       Array.isArray(rows) && rows.length === summary.scheduled, 'Incomplete request recording.');
     const ids = new Set();
     for (const row of rows) {
-      invariant(UUID.test(row.event_id || '') && !ids.has(row.event_id), 'Invalid or duplicate event identity.');
-      ids.add(row.event_id);
+      const id = typeof row.event_id === 'string' ? row.event_id.toLowerCase() : '';
+      invariant(UUID.test(id) && !ids.has(id), 'Invalid or duplicate event identity.');
+      ids.add(id);
       invariant(Number.isInteger(row.status) && row.status >= 100 && row.status <= 599 &&
         ['scheduled_s', 'started_s', 'completed_s', 'http_elapsed_s'].every(key => finite(row[key])) &&
         row.completed_s >= row.started_s, 'Invalid client observation.');
@@ -26,12 +27,16 @@ export function validateRun(run) {
     }
     const accepted = rows.filter(row => row.status === 202);
     const visible = accepted.filter(row => finite(row.observed_visibility_upper_bound_s));
+    const unresolved = new Set(accepted.filter(row => !finite(row.observed_visibility_upper_bound_s))
+      .map(row => row.event_id.toLowerCase()));
     const reconciliation = summary.accepted_reconciliation;
+    const reportedIds = Array.isArray(reconciliation?.unresolved_ids) ?
+      reconciliation.unresolved_ids.map(id => typeof id === 'string' ? id.toLowerCase() : null) : null;
     invariant(reconciliation && reconciliation.accepted === accepted.length &&
-      reconciliation.visible === visible.length && Array.isArray(reconciliation.unresolved_ids) &&
-      reconciliation.unresolved_ids.length === accepted.length - visible.length &&
-      reconciliation.unresolved_ids.every(id => ids.has(id)), 'Reconciliation does not match recorded requests.');
-    invariant(reconciliation.passed === (visible.length === accepted.length &&
+      reconciliation.visible === visible.length && reportedIds !== null &&
+      reportedIds.length === unresolved.size && new Set(reportedIds).size === unresolved.size &&
+      reportedIds.every(id => unresolved.has(id)), 'Reconciliation does not match recorded requests.');
+    invariant(reconciliation.passed === (accepted.length > 0 && visible.length === accepted.length &&
       reconciliation.unresolved_ids.length === 0), 'Unconfirmed outcomes cannot be reported as passed.');
     invariant(finite(summary.successful_http_elapsed?.p95_ms), 'Missing recorded latency percentile.');
   }

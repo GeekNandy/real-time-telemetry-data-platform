@@ -16,6 +16,42 @@ test('duplicate event identities are rejected', () => {
   run.environments.compose.requests[1].event_id = run.environments.compose.requests[0].event_id;
   assert.throws(() => validateRun(run), /duplicate event/);
 });
+test('alternate UUID casing cannot make a duplicate event count as a second identity', () => {
+  const run = structuredClone(recording);
+  run.environments.compose.requests[1].event_id = run.environments.compose.requests[0].event_id.toUpperCase();
+  assert.throws(() => validateRun(run), /duplicate event/);
+});
+test('unresolved IDs must name exactly the accepted events missing visibility', () => {
+  const run = structuredClone(recording);
+  const { requests, summary } = run.environments.compose;
+  for (const index of [0, 1]) delete requests[index].observed_visibility_upper_bound_s;
+  requests[2].status = 503;
+  summary.accepted_reconciliation = { accepted: 19, visible: 17,
+    unresolved_ids: [requests[1].event_id.toUpperCase(), requests[0].event_id], passed: false };
+  assert.doesNotThrow(() => validateRun(run));
+  for (const ids of [
+    [requests[0].event_id, requests[0].event_id.toUpperCase()],
+    [requests[0].event_id, requests[2].event_id],
+    [requests[0].event_id, requests[3].event_id],
+    [requests[0].event_id, null]
+  ]) {
+    summary.accepted_reconciliation.unresolved_ids = ids;
+    assert.throws(() => validateRun(run), /Reconciliation/);
+  }
+});
+test('a run with no accepted events cannot report successful reconciliation', () => {
+  const run = structuredClone(recording);
+  const { requests, summary } = run.environments.compose;
+  for (const request of requests) {
+    request.status = 503;
+    delete request.observed_visibility_upper_bound_s;
+  }
+  summary.accepted_reconciliation = { accepted: 0, visible: 0, unresolved_ids: [], passed: true };
+  assert.throws(() => validateRun(run), /Unconfirmed outcomes/);
+  summary.accepted_reconciliation.passed = false;
+  assert.doesNotThrow(() => validateRun(run));
+  assert.equal(complete(run.environments.compose), false);
+});
 test('a missing observation cannot be relabelled as successful reconciliation', () => {
   const run = structuredClone(recording);
   delete run.environments.compose.requests[0].observed_visibility_upper_bound_s;
