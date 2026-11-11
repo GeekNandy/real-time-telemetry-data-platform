@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "observed_date": "2026-11-11",
+  "tested_revision": "843cdc1d135ca5df836f989f26e3aba889a1fd6e",
+  "tested_tree": "33fbea0b78c44dfbcf6e095fa02be1c55ae4a173",
+  "base_revision": "e62ca4c9e8ff108a49d5036d482061c55a1058cb",
+  "environment": {
+    "kind": "managed local Linux workspace",
+    "jdk": "Temurin 21.0.9+10",
+    "maven": "wrapper 3.9.12",
+    "docker": "29.9.2 rootless, vfs",
+    "resource_controls": {
+      "CPUSet": false,
+      "CgroupDriver": "none",
+      "CgroupVersion": "2",
+      "CpuCfsPeriod": false,
+      "CpuCfsQuota": false,
+      "MemoryLimit": false
+    }
+  },
+  "java": {
+    "command": "./mvnw -s /workspace/.telemetry-env/maven-settings.xml -B -ntp -Pintegration verify",
+    "exit_code": 1,
+    "surefire": {
+      "counts": {
+        "tests": 155,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "error_cases": []
+    },
+    "failsafe": {
+      "counts": {
+        "tests": 18,
+        "failures": 0,
+        "errors": 3,
+        "skipped": 0
+      },
+      "error_cases": [
+        "dev.sharad.telemetry.service.PlatformIT.databaseOutagePreservesUncommittedWorkAndEventuallyStoresIt",
+        "dev.sharad.telemetry.service.PlatformIT.brokerOutageCannotReturn202AndUnconfirmedRetriesAreDeduplicated",
+        "dev.sharad.telemetry.service.PlatformIT.delayedAcknowledgementKeepsTheHttpResponsePending"
+      ]
+    },
+    "interpretation": "All 155 unit/contract tests and 15 integrations passed. Three integrations errored only because Docker pause requires an unavailable cgroup freezer; the complete profile did not pass. No tests were skipped."
+  },
+  "targeted_checks": [
+    {
+      "suite": "MCP Java",
+      "passed": 4
+    },
+    {
+      "suite": "Packaged MCP real HTTP/TLS and stdio",
+      "passed": 11
+    },
+    {
+      "suite": "Console Node contracts",
+      "passed": 27
+    },
+    {
+      "suite": "Chromium showcase workflows",
+      "passed": 6
+    },
+    {
+      "suite": "HTTP redirect transport",
+      "passed": 4
+    },
+    {
+      "suite": "Schema bootstrap HTTP",
+      "passed": 6
+    },
+    {
+      "suite": "Load HTTP/reconciliation",
+      "passed": 7
+    },
+    {
+      "suite": "SLO reports and release validation",
+      "passed": 15
+    },
+    {
+      "suite": "SLO profiles",
+      "passed": 11
+    },
+    {
+      "suite": "Core native runner",
+      "passed": 27,
+      "note": "Repeats core cases already counted in Java; not additional distinct tests."
+    },
+    {
+      "suite": "Java formatter, Python compilation, changed shell syntax, KRaft static topology, diff whitespace",
+      "passed": true
+    }
+  ],
+  "slo": {
+    "command": "python3 scripts/slo-run.py --mode pilot --profile reference --repeat 1 --output data/issue-audit/slo-preflight",
+    "exit_code": 1,
+    "outcome": "Expected preflight rejection before image builds/load: no enforceable Docker CPU, memory or CPU-set controls. No new latency, capacity, soak or burst measurement."
+  },
+  "remaining_requirements": {
+    "issue_1": "Independent human review with reviewer identity, source/tree, date and verdict.",
+    "issue_22": "Valid fixed-resource pilot followed by all eight cases/twenty phases passing unchanged full release gates.",
+    "ci": "New PR CI has not run; local verification is not a CI pass."
+  },
+  "upgrade": "Existing dead-letter topics need max.message.bytes=2097152 before upgrade; see docs/worker.md.",
+  "artifact_note": "Raw local logs are ignored and not committed; digests identify retained workspace evidence. Synthetic data only. Targeted suites were run during this change and their tested code is included in tested_revision.",
+  "local_artifacts": [
+    {
+      "path": "data/issue-audit/integration-final.log",
+      "sha256": "4eeab64fbf32db880791686ed02e1d7550ab3103e499e20b6d91e89aae610e1e"
+    },
+    {
+      "path": "data/issue-audit/slo-preflight/artifact/resource-controls.json",
+      "sha256": "3be11b6ced635b9311060f9bda7315d7069da388bf8d5c5dae2ea67291516c59"
+    },
+    {
+      "path": "data/issue-audit/mcp-maven.log",
+      "sha256": "86f46d6daca2aba03e065123b509e700985559151b97f2444eef0128d0f75387"
+    },
+    {
+      "path": "data/issue-audit/mcp-contracts.log",
+      "sha256": "d407602c59df8aea555d4330538d25d37db282f70728c79b159a3fa2921b59e1"
+    },
+    {
+      "path": "data/issue-audit/console-fixed.log",
+      "sha256": "9abc9652612d432caf010fee53bb6d79f4a568ca3ce1e9a7356e1cb6a9896108"
+    },
+    {
+      "path": "data/issue-audit/showcase-browser.log",
+      "sha256": "710e1595bfe93470f49c10bb18a39ecee09aa31b011c8c83473d07281e33b5d4"
+    },
+    {
+      "path": "data/issue-audit/schema-bootstrap-final.log",
+      "sha256": "715ad4c636b619d194ad77261b23433271c5f0769052fdd262b03f7e4235bbae"
+    },
+    {
+      "path": "data/issues-audit/dlt-before.log",
+      "sha256": "b190fc954feb097781687e89b3c37d29ae9783b8fc27d781a9222955350fd279"
+    },
+    {
+      "path": "data/issues-audit/dlt-privacy.log",
+      "sha256": "eba5f64561a3aebf74f6e7c977857e0fdc72f94e847ac84631db6d728d72f8fa"
+    }
+  ]
+}

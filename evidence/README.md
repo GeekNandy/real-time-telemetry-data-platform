@@ -4,6 +4,7 @@ Each record identifies its tested source revision, observation date and executio
 
 | Record | Contents |
 | --- | --- |
+| [issue-audit-2026-11-11.json](issue-audit-2026-11-11.json) | Operational audit fixes, local regression results, unsupported Docker pause/resource controls, and remaining review/SLO requirements |
 | [verification-runs.json](verification-runs.json) | Selected passing CI runs with tested source revisions and available merge metadata |
 | [capacity-2026-10-28/results.json](capacity-2026-10-28/results.json) | All 27 measured phases, workload budgets, acceptance comparisons and collector/worker JFR aggregates |
 | [capacity-2026-10-28/provenance.json](capacity-2026-10-28/provenance.json) | Nine environments, image/filesystem identities, artifact digests and raw-request audits |

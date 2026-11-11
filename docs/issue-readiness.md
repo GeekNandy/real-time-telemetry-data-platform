@@ -5,6 +5,14 @@ This checklist was reviewed on 2026-11-10 against main
 correctness fixes. Historical test results retain their original source and
 environment; they are not fresh workload measurements.
 
+The [2026-11-11 verification record](../evidence/issue-audit-2026-11-11.json)
+identifies tested revision `843cdc1d135ca5df836f989f26e3aba889a1fd6e` and the
+retained local evidence. All 155 Java unit/contracts and 15 integrations passed;
+three additional integrations errored because this daemon lacks Docker's cgroup
+freezer for container pause. The complete integration profile therefore failed.
+Targeted HTTP/schema, SLO, MCP and console/browser regressions passed. New PR CI
+and the full workload experiment remain outstanding.
+
 | Requirement | Evidence and current status | Remaining gate |
 | --- | --- | --- |
 | [#1: platform foundation](https://github.com/GeekNandy/real-time-telemetry-data-platform/issues/1) | The issue records completed correctness, deployment and measured-workload verification. [Verification](verification.md) and [performance findings](performance-results.md) retain the original scope. | Independent human review, recording reviewer identity, reviewed source/tree, date and verdict using the [review guide](review-guide.md). Automated analysis cannot satisfy this gate. |
