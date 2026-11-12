@@ -78,6 +78,11 @@ timeout, authorization failure, invalid response and oversize return bounded
 errors without copying upstream bodies. Cancelling a call interrupts its read;
 closing the process cancels HTTP work. The launcher caps Java heap at 128 MiB.
 
+Health responses with HTTP 503 retain the allowlisted `DOWN` or `OUT_OF_SERVICE`
+status. An unreachable endpoint, malformed response or contradictory HTTP 503
+body reports `UNAVAILABLE`. Health component details are discarded and no
+credential is sent. Metrics still require a successful HTTP 200 response.
+
 The MCP SDK's stdio transport assumes a cooperating local client; its internal
 protocol queues are not an Internet admission boundary. Keep this process local
 and let its client manage its lifecycle. A future remote MCP service would need

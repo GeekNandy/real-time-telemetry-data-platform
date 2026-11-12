@@ -17,6 +17,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from http_transport import open_without_redirects
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("capacity_report", ROOT / "scripts/capacity-report.py")
@@ -45,7 +46,7 @@ def now():
 def operations(token, url):
     request = urllib.request.Request(url + "/v1/operations/metrics", headers={"Authorization": "Bearer " + token})
     try:
-        with urllib.request.urlopen(request, timeout=2) as response:
+        with open_without_redirects(request, timeout=2) as response:
             data = response.read(65537)
             return json.loads(data) if len(data) <= 65536 else None
     except urllib.error.HTTPError as error:

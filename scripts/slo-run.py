@@ -22,7 +22,7 @@ ROOT=Path(__file__).resolve().parents[1]
 def module(name):
     spec=importlib.util.spec_from_file_location(name.replace('-','_'),ROOT/'scripts'/f'{name}.py')
     loaded=importlib.util.module_from_spec(spec);spec.loader.exec_module(loaded);return loaded
-TOOL=module('slo-tool');REPORT=module('slo-report');CAPACITY=module('capacity-run')
+TOOL=module('slo-tool');REPORT=module('slo-report');CAPACITY=module('capacity-run');HTTP=module('http_transport')
 run=CAPACITY.run
 
 def digest(path):
@@ -35,9 +35,17 @@ def digest(path):
 def private_json(path,value):path.write_text(json.dumps(value));path.chmod(0o600)
 
 
+def require_resource_controls(info):
+    missing=[name for name in ('MemoryLimit','CpuCfsPeriod','CpuCfsQuota','CPUSet') if info.get(name) is not True]
+    if info.get('CgroupDriver') not in ('systemd','cgroupfs'):missing.append('CgroupDriver')
+    if info.get('CgroupVersion') not in ('1','2'):missing.append('CgroupVersion')
+    if missing:
+        raise RuntimeError('SLO measurements require enforced Docker memory, CPU quota and CPU-set controls; unavailable: '+', '.join(missing))
+
+
 def metrics(token,url,path):
     request=urllib.request.Request(url+'/actuator/prometheus',headers={'Authorization':'Bearer '+token})
-    with urllib.request.urlopen(request,timeout=3) as response:
+    with HTTP.open_without_redirects(request,timeout=3) as response:
         body=response.read(2097153)
         if len(body)>2097152:raise ValueError('Metrics response exceeds the bound')
     lines=[line for line in body.decode().splitlines() if line.startswith(('telemetry_append_phase_','telemetry_spool_','telemetry_dispatch_','telemetry_persistence_batch_'))]
@@ -260,6 +268,10 @@ def main():
     artifact=args.output/'artifact';artifact.mkdir()
     args.revision=run(['git','rev-parse','HEAD']).stdout.strip()
     if run(['git','status','--porcelain']).stdout.strip():raise RuntimeError('Require a clean tested source tree')
+    docker_info=json.loads(run(['docker','info','--format','{{json .}}']).stdout)
+    controls={key:docker_info.get(key) for key in ('CgroupDriver','CgroupVersion','MemoryLimit','CpuCfsPeriod','CpuCfsQuota','CPUSet')}
+    (artifact/'resource-controls.json').write_text(json.dumps(controls,indent=2,sort_keys=True)+'\n')
+    require_resource_controls(controls)
     cpus=sorted(os.sched_getaffinity(0))
     if len(cpus)<4:raise RuntimeError('Require at least four CPUs for a separated generator CPU')
     args.generator_cpu=str(cpus[-1]);args.service_cpus=','.join(map(str,cpus[:-1]))
@@ -270,6 +282,7 @@ def main():
         cpu=run(['lscpu','-J']).stdout,docker=run(['docker','version','--format','{{json .Server.Version}}']).stdout.strip(),
         runner=run(['docker','info','--format','{"cpus":{{.NCPU}},"memory_bytes":{{.MemTotal}},"storage_driver":{{json .Driver}}}']).stdout.strip(),
         generator_cpu=args.generator_cpu,service_cpus=args.service_cpus,k6_version=TOOL.VERSION,k6_archive_sha256=TOOL.TOOL_SHA256,k6_binary_sha256=TOOL.BINARY_SHA256,
+        resource_controls=controls,
         limitations=['Shared standard runner and storage; unknown disk IOPS and noisy-neighbor effects',
             'Synthetic eight-tenant, 512-byte workload only; no production ceiling or monthly SLA claim',
             'Three data brokers share one controller and machine; no multi-AZ/controller-quorum availability claim',

@@ -15,6 +15,39 @@ source offset advances. Registry, broker and database outages remain retryable.
 Do not skip offsets or weaken broker policy to clear lag. Restore the dependency,
 require lag to drain and reconcile accepted IDs.
 
+The source topic declares `max.message.bytes=1048588` (Kafka's default batch
+ceiling). The DLT declares `max.message.bytes=2097152` and uses a separate,
+bounded producer with a 2 MiB request limit. This leaves room for original keys,
+headers and the added quarantine metadata when a malformed record approaches
+the source ceiling. The collector's producer request limit remains 32 KiB.
+The DLT producer inherits broker authentication, `acks=all`, idempotence and the
+bounded producer buffer, and closes with the worker.
+Both producer templates use a fixed send-failure diagnostic without copying
+record keys, payloads or upstream exception text into the producer listener log.
+
+Startup verifies the effective source ceiling is positive and no greater than
+1,048,588 bytes, and the DLT ceiling is at least 2 MiB. Existing DLT topics need
+the following configuration update before upgrading; topic declarations do not
+silently rewrite existing broker configuration. Use the deployment's authenticated
+Kafka CLI settings and configured topic names:
+
+```bash
+kafka-configs.sh --bootstrap-server "$KAFKA_BOOTSTRAP_SERVERS" \
+  --command-config "$KAFKA_CLIENT_PROPERTIES" \
+  --entity-type topics --entity-name telemetry.events.v1.dlt \
+  --alter --add-config max.message.bytes=2097152
+```
+
+External producers must also keep each serialized, uncompressed source record,
+including its key and headers, within the source ceiling. Kafka enforces topic
+limits on compressed batches, so a heavily compressed external record can expand
+beyond the supported quarantine budget. Such a publication failure keeps the
+source offset uncommitted for operator remediation; payloads are never truncated
+or discarded to advance the partition. The real-Kafka `DeadLetterBoundsIT`
+regression sends a near-limit poison payload whose DLT metadata crosses the source
+ceiling, verifies the complete quarantined payload, and reconciles the valid
+suffix and committed offset.
+
 GET /v1/events/{id} requires telemetry.read and derives its tenant from the JWT.
 JDBC queries use a bounded scheduler instead of the HTTP event loop. A transient
 404 is expected before asynchronous persistence finishes. Query storage failures

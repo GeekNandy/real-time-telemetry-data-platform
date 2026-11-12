@@ -9,6 +9,22 @@ ROOT=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('slo_tool',ROOT/'scripts/slo-tool.py')
 TOOL=importlib.util.module_from_spec(spec);spec.loader.exec_module(TOOL)
 
+COMMON_GATES=frozenset(('complete_raw_audit','scheduled_offers_accounted','zero_contract_failures',
+    'all_202_reconciled','zero_wrong_stored_content','cross_tenant_denied','resources_observed',
+    'source_offsets_observed','fixed_role_limits','no_oom_or_restart','bounded_memory',
+    'complete_stage_observations','profile_coverage'))
+SUSTAINED_GATES=frozenset(('zero_generator_drops','valid_acceptance_fraction','acceptance_p99',
+    'acceptance_p999','generator_delay_p99','live_visibility_p99','live_visibility_fraction',
+    'bounded_source_lag','cpu_headroom'))
+BURST_GATES=frozenset(('allowed_overload_outcomes','bounded_response_p99','bounded_backlog',
+    'healthy_acceptance_recovered','live_visibility_recovered','source_backlog_recovered'))
+
+def required_gates(profile):
+    if profile=='burst':return COMMON_GATES|BURST_GATES
+    if profile in ('reference','scale','soak'):
+        return COMMON_GATES|SUSTAINED_GATES|({'retained_heap_guard'} if profile=='soak' else set())
+    raise ValueError('Invalid workload profile')
+
 def aggregate(root,mode,pilot_profile='reference'):
     if pilot_profile not in ('reference','scale'):raise ValueError('Invalid pilot profile')
     expected={(p,r) for p in ('reference','scale') for r in (1,2,3)}|{('soak',1),('burst',1)} if mode=='full' else {(pilot_profile,1)}
@@ -31,7 +47,9 @@ def aggregate(root,mode,pilot_profile='reference'):
             if result.get('profile')!=key[0] or result.get('repeat')!=key[1] or result.get('phase')!=name:raise ValueError('Wrong phase identity')
             if result.get('protocol_sha256')!=protocol or result.get('profiles_sha256')!=profiles:raise ValueError('Measurement protocol drift')
             if bool(result.get('eligible'))!=(mode=='full') or result.get('mode')!=mode:raise ValueError('Invalid experiment eligibility')
-            if not result.get('gates') or any(type(v) is not bool for v in result['gates'].values()) or result.get('passed')!=all(result['gates'].values()):raise ValueError('Invalid gate accounting')
+            gates=result.get('gates')
+            if not isinstance(gates,dict) or set(gates)!=required_gates(key[0]):raise ValueError('Incomplete or unexpected workload gates')
+            if any(type(v) is not bool for v in gates.values()) or type(result.get('passed')) is not bool or result['passed']!=all(gates.values()):raise ValueError('Invalid gate accounting')
             if name=='baseline':
                 if result['source_revision']!=TOOL.BASELINE:raise ValueError('Wrong baseline acknowledgement contract')
             else:

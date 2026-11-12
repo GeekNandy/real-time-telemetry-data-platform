@@ -68,8 +68,16 @@ final class LocalBrokerRegistry implements AutoCloseable {
         admin
             .createTopics(
                 java.util.List.of(
-                    new NewTopic("telemetry.events.v1", 3, (short) replicas),
-                    new NewTopic("telemetry.events.v1.dlt", 3, (short) replicas)))
+                    new NewTopic("telemetry.events.v1", 3, (short) replicas)
+                        .configs(
+                            Map.of(
+                                "max.message.bytes",
+                                Integer.toString(KafkaAcceptancePolicy.SOURCE_MAX_BYTES))),
+                    new NewTopic("telemetry.events.v1.dlt", 3, (short) replicas)
+                        .configs(
+                            Map.of(
+                                "max.message.bytes",
+                                Integer.toString(KafkaAcceptancePolicy.DEAD_LETTER_MAX_BYTES)))))
             .all()
             .get(20, TimeUnit.SECONDS);
       }

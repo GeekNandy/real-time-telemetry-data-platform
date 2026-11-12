@@ -129,8 +129,12 @@ final class OperatorTools implements AutoCloseable {
 
   private Map<String, Object> health(URI origin) {
     try {
-      Map<?, ?> body = object(http.get(origin, "/actuator/health", null));
+      var response = http.getHealth(origin);
+      Map<?, ?> body = object(response.body());
       Object status = body.get("status");
+      if (response.statusCode() == 503 && !Set.of("DOWN", "OUT_OF_SERVICE").contains(status)) {
+        return Map.of("status", "UNAVAILABLE");
+      }
       if (!Set.of("UP", "DOWN", "OUT_OF_SERVICE", "UNKNOWN").contains(status)) {
         return Map.of("status", "UNKNOWN");
       }

@@ -20,13 +20,14 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from http_transport import open_without_redirects
 
 
 def call(url, token, timeout, body=None, expected_event_id=None):
     request = urllib.request.Request(url, data=body, headers={
         "Authorization": "Bearer " + token, "Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with open_without_redirects(request, timeout=timeout) as response:
             payload = response.read(65537)
             if len(payload) > 65536:
                 return "invalid_response"
