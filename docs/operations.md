@@ -37,6 +37,13 @@ producer and actual topic policy at startup. Keep that policy under administrati
 access control; changing it after verification changes the fault assumptions. The
 reference has one controller and does not establish controller-quorum or AZ HA.
 
+The Compose broker healthcheck sends a Kafka `ApiVersions` request over the local
+PLAINTEXT listener, checks the response and requires Produce and Metadata APIs.
+It has a three-second total deadline and starts no JVM. This checks broker
+protocol responsiveness; application readiness still verifies the topic policy,
+leaders and ISR before the reference workload runs. Controller quorum recovery
+uses its separate controller checks.
+
 `docker compose stop` retains state. `docker compose down -v` destroys all local
 volumes, including Kafka's accepted records and unconfirmed spool entries; use it only when
 that data can be discarded. Demo credentials and bearer tokens must never be
